@@ -12,8 +12,9 @@ class TestCharacter(CharacterEntity):
     pathComplete = True
     moves = 1
     rnge = 4
+    bombCycle = 0
 
-    def look_for_empty_cell(self, wrld, current, monster):
+    def look_for_empty_cell(self, wrld, current):
         # List of empty cells
         cells = []
         # Go through neighboring cells
@@ -25,13 +26,14 @@ class TestCharacter(CharacterEntity):
                     if ((current[1] + dy >= 0) and (current[1] + dy < wrld.height())):
                         # Is this cell safe?
                         if(wrld.exit_at(current[0] + dx, current[1] + dy) or
-                           wrld.empty_at(current[0] + dx, current[1] + dy)):
-                            for mx in [-2, -1, 0, 1, 2]:
-                                for my in [-2, -1, 0, 1, 2]:
-                                    if not ((current[0] + dx == monster[0] + mx) or
-                                        (current[1] + dy == monster[1] + my)):
+                           wrld.empty_at(current[0] + dx, current[1] + dy) or
+                           wrld.wall_at(current[0] + dx, current[1] + dy)):
+                            # for mx in [-2, -1, 0, 1, 2]:
+                            #     for my in [-2, -1, 0, 1, 2]:
+                            #         if not ((current[0] + dx == monster[0] + mx) or
+                            #             (current[1] + dy == monster[1] + my)):
 
-                                        cells.append((current[0] + dx, current[1] + dy))
+                            cells.append((current[0] + dx, current[1] + dy))
         # All done
         return cells
     
@@ -51,8 +53,29 @@ class TestCharacter(CharacterEntity):
     def heuristic(self, goal, next):
         return sum(abs(val1-val2) for val1, val2 in zip(goal, next))
     
-    def cost(self, current, next):
-        return abs(current[0] - next[0]) + abs(current[1] - next[1])
+    def cost(self, wrld, current, next):
+        move_cost = abs(current[0] - next[0]) + abs(current[1] - next[1])
+        if wrld.wall_at(next[0],next[1]):
+            move_cost += 15
+            for dx in [-1, 0, 1]:
+                if ((current[0] + dx >= 0) or (current[0] + dx < wrld.width())):
+                    move_cost -= 2
+        return move_cost
+    
+    def bomb_moves(self, wrld):
+        direction = 0
+        if (self.x != 0):
+            # move left
+            direction = -1
+        if (self.x != wrld.width() - 1):
+            # move right
+            direction = 1
+        if self.bombCycle == 5:
+            self.move(direction,-1)
+        if self.bombCycle == 1:
+            self.move(-direction,1)
+        if (self.bombCycle == 4 or self.bombCycle == 3 or self.bombCycle == 2):
+            self.move(0,0)
 
     def do(self, wrld):
         found, mx, my = self.monster_in_range(wrld)
@@ -67,12 +90,21 @@ class TestCharacter(CharacterEntity):
         for cell in self.path:
             self.set_cell_color(cell[0],cell[1], Fore.RED + Back.BLACK)
         if self.moves < len(self.path):
-            next = self.path[self.moves]
-            dx = next[0] - self.x
-            dy = next[1] - self.y
-            self.move(dx,dy)
-            self.moves += 1
+            next = self.path[self.moves]   
+            if (wrld.wall_at(next[0], next[1]) and self.bombCycle == 0):
+                self.place_bomb()
+                self.bombCycle = 5
+                self.bomb_moves(wrld)
+            if (self.bombCycle != 0):
+                self.bomb_moves(wrld)
+                self.bombCycle -= 1       
+            if self.bombCycle == 0:
+                dx = next[0] - self.x
+                dy = next[1] - self.y
+                self.move(dx,dy)
+                self.moves += 1
         print(self.path)
+        print(self.bombCycle)
 
     def makePath(self, wrld, came_from):
         current = wrld.exitcell
@@ -98,8 +130,8 @@ class TestCharacter(CharacterEntity):
             goal = wrld.exitcell
             if current == goal:
                 break
-            for next in self.look_for_empty_cell(wrld, current, monster):
-                new_cost = cost_so_far[current] + self.cost(current, next)
+            for next in self.look_for_empty_cell(wrld, current):
+                new_cost = cost_so_far[current] + self.cost(wrld, current, next)
                 if next not in cost_so_far or new_cost < cost_so_far[next]:
                     cost_so_far[next] = new_cost
                     priority = new_cost + self.heuristic(goal, next)
