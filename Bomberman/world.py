@@ -88,43 +88,43 @@ class World:
     def printit(self):
         """Prints the current state of the world"""
         border = "+" + "-" * self.width() + "+\n"
-        print("\nTIME LEFT: ", self.time)
-        sys.stdout.write(border)
-        for y in range(self.height()):
-            sys.stdout.write("|")
-            for x in range(self.width()):
-                if self.characters_at(x,y):
-                    for c in self.characters_at(x,y):
-                        sys.stdout.write(Back.GREEN + c.avatar)
-                elif self.monsters_at(x,y):
-                    for m in self.monsters_at(x,y):
-                        sys.stdout.write(Back.BLUE + m.avatar)
-                elif self.exit_at(x,y):
-                    sys.stdout.write(Back.YELLOW + "#")
-                elif self.bomb_at(x,y):
-                    sys.stdout.write(Back.MAGENTA + "@")
-                elif self.explosion_at(x,y):
-                    sys.stdout.write(Fore.RED + "*")
-                elif self.wall_at(x,y):
-                    sys.stdout.write(Back.WHITE + " ")
-                else:
-                    tile = False
-                    for k,clist in self.characters.items():
-                        for c in clist:
-                            if c.tiles.get((x,y)):
-                                sys.stdout.write(c.tiles[(x,y)] + ".")
-                                tile = True
-                                break
-                    if not tile:
-                        sys.stdout.write(" ")
-                sys.stdout.write(Style.RESET_ALL)
-            sys.stdout.write("|\n")
-        sys.stdout.write(border)
-        sys.stdout.flush()
-        print("SCORES")
-        for c,s in self.scores.items():
-            print(c,s)
-        print("EVENTS")
+        # print("\nTIME LEFT: ", self.time)
+        # sys.stdout.write(border)
+        # for y in range(self.height()):
+        #     sys.stdout.write("|")
+        #     for x in range(self.width()):
+        #         if self.characters_at(x,y):
+        #             for c in self.characters_at(x,y):
+        #                 sys.stdout.write(Back.GREEN + c.avatar)
+        #         elif self.monsters_at(x,y):
+        #             for m in self.monsters_at(x,y):
+        #                 sys.stdout.write(Back.BLUE + m.avatar)
+        #         elif self.exit_at(x,y):
+        #             sys.stdout.write(Back.YELLOW + "#")
+        #         elif self.bomb_at(x,y):
+        #             sys.stdout.write(Back.MAGENTA + "@")
+        #         elif self.explosion_at(x,y):
+        #             sys.stdout.write(Fore.RED + "*")
+        #         elif self.wall_at(x,y):
+        #             sys.stdout.write(Back.WHITE + " ")
+        #         else:
+        #             tile = False
+        #             for k,clist in self.characters.items():
+        #                 for c in clist:
+        #                     if c.tiles.get((x,y)):
+        #                         sys.stdout.write(c.tiles[(x,y)] + ".")
+        #                         tile = True
+        #                         break
+        #             if not tile:
+        #                 sys.stdout.write(" ")
+        #         sys.stdout.write(Style.RESET_ALL)
+        #     sys.stdout.write("|\n")
+        # sys.stdout.write(border)
+        # sys.stdout.flush()
+        # print("SCORES")
+        # for c,s in self.scores.items():
+        #     print(c,s)
+        # print("EVENTS")
         for e in self.events:
             print(e)
 

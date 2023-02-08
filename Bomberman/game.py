@@ -145,3 +145,7 @@ class Game:
 
     def add_character(self, c):
         self.world.add_character(c)
+    
+    # def winning(self):
+    #     for k, clist in self.world.characters.items()
+            
