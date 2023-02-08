@@ -12,6 +12,8 @@ class TestCharacter(CharacterEntity):
     pathComplete = True
     moves = 1
     rnge = 3
+    bombCycle = 0
+    bombRecent = 100
 
     # Just looks for neighbors of 8 as the frontier
     def look_for_empty_cell(self, wrld, current):
@@ -26,7 +28,8 @@ class TestCharacter(CharacterEntity):
                     if ((current[1] + dy >= 0) and (current[1] + dy < wrld.height())):
                         # Is this cell safe?
                         if(wrld.exit_at(current[0] + dx, current[1] + dy) or
-                           wrld.empty_at(current[0] + dx, current[1] + dy)):
+                           wrld.empty_at(current[0] + dx, current[1] + dy) or
+                           (wrld.wall_at(current[0] + dx, current[1] + dy) and dy != -1)):
                                 cells.append((current[0] + dx, current[1] + dy))
         # All done
         return cells
@@ -92,9 +95,33 @@ class TestCharacter(CharacterEntity):
         return max(abs(next[0] - goal[0]), abs(next[1] - goal[1]))
         # return sum(abs(val1-val2) for val1, val2 in zip(goal, next))
     
-    def cost(self, current, next):
-        return abs(current[0] - next[0]) + abs(current[1] - next[1])
-
+    def cost(self, wrld, current, next):
+        move_cost = abs(current[0] - next[0]) + abs(current[1] - next[1])
+        if wrld.wall_at(next[0],next[1]):
+            move_cost += 16
+            for dx in [-1, 0, 1]:
+                if ((current[0] + dx >= 0) or (current[0] + dx < wrld.width())):
+                    move_cost -= 3
+        return move_cost
+    
+    def bomb_moves(self, wrld):
+        direction = 0
+        if (self.x != 0):
+            # move left
+            direction = -1
+        if (self.x != wrld.width() - 1):
+            # move right
+            direction = 1
+        if self.bombCycle == 5:
+            self.move(direction,-1)
+        if self.bombCycle == 2:
+            self.move(-direction,1)
+        if self.bombCycle == 1:
+            self.move(direction,1)
+        if (self.bombCycle == 6 or self.bombCycle == 4 or self.bombCycle == 3):
+            self.move(0,0)
+        print(self.bombCycle)
+    
     def do(self, wrld):
         found, mx, my = self.monster_in_range(wrld)
         current_pos = self.x, self.y
@@ -119,11 +146,21 @@ class TestCharacter(CharacterEntity):
         found = False
         
         if self.moves < len(self.path):
-            next = self.path[self.moves]
-            dx = next[0] - self.x
-            dy = next[1] - self.y
-            self.move(dx,dy)
-            self.moves += 1
+            next = self.path[self.moves]   
+            if (wrld.wall_at(next[0], next[1]) and self.bombCycle == 0 and self.bombRecent > 5):
+                self.place_bomb()
+                self.bombCycle = 6
+                self.bombRecent = 0
+                self.bomb_moves(wrld)
+            if (self.bombCycle != 0):
+                self.bomb_moves(wrld)
+                self.bombCycle -= 1       
+            if self.bombCycle == 0:
+                dx = next[0] - self.x
+                dy = next[1] - self.y
+                self.move(dx,dy)
+                self.moves += 1
+            self.bombRecent +=1
         
 
     def makePath(self, wrld, came_from):
@@ -174,7 +211,7 @@ class TestCharacter(CharacterEntity):
             if current == goal:
                 break
             for next in self.look_for_empty_cell(wrld, current):
-                new_cost = cost_so_far[current] + self.cost(current, next)
+                new_cost = cost_so_far[current] + self.cost(wrld, current, next)
                 if next not in cost_so_far or new_cost < cost_so_far[next]:
                     cost_so_far[next] = new_cost
                     priority = new_cost + self.heuristic(goal, next)
