@@ -11,7 +11,11 @@ from world import World
 class TestCharacter(CharacterEntity):
     pathComplete = True
     moves = 1
-    rnge = 3
+    rnge = 2
+    bombCycle = 0
+    bombRecent = 100
+    bomb_location = None
+    bomb_start = False
 
     # Just looks for neighbors of 8 as the frontier
     def look_for_empty_cell(self, wrld, current):
@@ -26,7 +30,35 @@ class TestCharacter(CharacterEntity):
                     if ((current[1] + dy >= 0) and (current[1] + dy < wrld.height())):
                         # Is this cell safe?
                         if(wrld.exit_at(current[0] + dx, current[1] + dy) or
-                           wrld.empty_at(current[0] + dx, current[1] + dy)):
+                           wrld.empty_at(current[0] + dx, current[1] + dy) or
+                           (wrld.wall_at(current[0] + dx, current[1] + dy) and dy != -1)):
+                                cells.append((current[0] + dx, current[1] + dy))
+        # All done
+        return cells
+    
+        # Just looks for neighbors of 8 as the frontier
+    def look_for_empty_cell_bomb(self, wrld, current):
+        # List of empty cells
+        cells = []
+        # Go through neighboring cells
+        for dx in [-1, 0, 1]:
+            # Avoid out-of-bounds access
+            if ((current[0] + dx >= 0) and (current[0] + dx < wrld.width())):
+                for dy in [-1, 0, 1]:
+                    # Avoid out-of-bounds access
+                    if ((current[1] + dy >= 0) and (current[1] + dy < wrld.height())):
+                        # Is this cell safe?
+                        # if(self.bomb_location != None and 
+                        # not self.bomb_blast(current[0] + dx, current[1] + dy)
+                        # and not wrld.wall_at(current[0] + dx, current[1] + dy)
+                        # and not wrld.monsters_at(current[0] + dx, current[1] + dy)
+                        # and not wrld.bomb_at(current[0] + dx, current[1] + dy)
+                        # and not wrld.explosion_at(current[0] + dx, current[1] + dy)):
+                        #         # print("Frontier: " + str(current[0] + dx) + " : "+ str(current[1] + dy))
+                        #         cells.append((current[0] + dx, current[1] + dy))
+                        if ((wrld.exit_at(current[0] + dx, current[1] + dy) or
+                              wrld.empty_at(current[0] + dx, current[1] + dy)) and 
+                              not self.bomb_blast(current[0] + dx, current[1] + dy)):
                                 cells.append((current[0] + dx, current[1] + dy))
         # All done
         return cells
@@ -91,50 +123,123 @@ class TestCharacter(CharacterEntity):
     def heuristic(self, goal, next):
         return max(abs(next[0] - goal[0]), abs(next[1] - goal[1]))
         # return sum(abs(val1-val2) for val1, val2 in zip(goal, next))
-    
-    def cost(self, current, next):
-        return abs(current[0] - next[0]) + abs(current[1] - next[1])
+   
+    def euclidean_distance(self, goal, next):
+        return math.sqrt((goal[0]-next[0])**2 + (goal[1] - next[1])**2)
 
+    def cost(self, wrld, current, next):
+        move_cost = abs(current[0] - next[0]) + abs(current[1] - next[1])
+        if wrld.wall_at(next[0],next[1]):
+            move_cost += 16
+            for dx in [-1, 0, 1]:
+                if ((current[0] + dx >= 0) or (current[0] + dx < wrld.width())):
+                    move_cost -= 3
+        return move_cost
+    
+    def direction_after_bomb(self, wrld):
+        found, mx, my = self.monster_in_range(wrld)
+        monster = mx, my
+        weighted_angles : list[tuple(tuple, float)] = []
+        possible_angles = []
+        for dx in [-1,1]:
+            if ((self.x + dx >= 0) and (self.x + dx < wrld.width())):
+                for dy in [-1,1]:    
+                    if ((self.y + dy >= 0) and (self.y + dy < wrld.height())):
+                        if (wrld.exit_at(self.x + dx, self.y + dy) or
+                           wrld.empty_at(self.x + dx, self.y + dy) ):
+                            possible_angles.append((self.x + dx, self.y + dy))
+    
+        for move in possible_angles:
+            weight = self.euclidean_distance(monster, move)
+            weighted_angles.append((move, weight))
+        # print(weighted_angles)
+        return self.best_move(weighted_angles)
+
+    def best_move(self, weighted_angles):
+        best_val = -99
+        bestMove = [self.x, self.y]
+        for move in weighted_angles:
+            if move[1] > best_val:
+                bestMove = move[0]
+                best_val = move[1] 
+        return bestMove
+
+    def bomb_moves(self, wrld):
+        # direction = 0
+        # if (self.x != 0):
+        #     # move left
+        #     direction = -1
+        # if (self.x != wrld.width() - 1):
+        #     # move right
+        #     direction = 1
+        # if self.bombCycle == 5:
+        #     self.move(direction,-1)
+        # if self.bombCycle == 2:
+        #     self.move(-direction,1)
+        # if self.bombCycle == 1:
+        #     self.move(direction,1)
+        # if (self.bombCycle == 6 or self.bombCycle == 4 or self.bombCycle == 3):
+        #     self.move(0,0)
+        next_move = self.direction_after_bomb(wrld)
+        # print(next_move)
+        self.move(next_move[0], next_move[1])
+        # print(self.bombCycle)
+    
     def do(self, wrld):
         found, mx, my = self.monster_in_range(wrld)
         current_pos = self.x, self.y
         monster = mx, my
+        # print("BOMBCylce " + str(self.bombCycle))
+        if self.bombCycle == 3 and self.bomb_start:
+            self.bombCycle = 0
+            self.bomb_start = False
+            self.bomb_location = None
+        # print("IS FOund? " + str(found))
         if found:
             self.moves = 1
             self.path = [current_pos]
-            # print("Monster is " + str(monster))
-            new_move = self.exp_max(wrld,monster)
- 
-            self.path.append(new_move)   
-            
-            # for cell in self.path:
-            #     self.set_cell_color(cell[0],cell[1], Fore.BLACK + Back.BLACK)
+            if self.bombCycle == 0: 
+                bomb_move = self.direction_after_bomb(wrld)
+                # print("Bomb move: " + str(bomb_move))
+                self.path.append(bomb_move)
+                self.bomb_location = self.bombing()
+                self.bomb_start = True
+            else:
+                new_move = self.exp_max(wrld,monster)
+                # print("Expecti move: " + str(new_move))
+                self.path.append(new_move) 
         else:
             self.path = self.makePath(wrld, self.astar(wrld))
             self.moves = 1
-        # for cell in self.path:
-        #     self.set_cell_color(cell[0],cell[1], Fore.RED + Back.BLACK)
-        # print("This is the current pos " + str(current_pos))
-        # print("This is the path " + str(self.path))
         found = False
-        
+
+        # print(self.path)
         if self.moves < len(self.path):
             next = self.path[self.moves]
+            # print(self.path)   
             dx = next[0] - self.x
             dy = next[1] - self.y
             self.move(dx,dy)
+            if self.bomb_start == True:
+                self.bombCycle += 1
             self.moves += 1
+            self.bombRecent +=1
         
 
     def makePath(self, wrld, came_from):
         current = wrld.exitcell
         path = []
-        while current != (self.x, self.y):
-            path.append(current)
-            current = came_from[current]
-        path.append((self.x, self.y))
-        path.reverse()
-        return path
+        if current in came_from:              
+            while current != (self.x, self.y):
+                path.append(current)
+                current = came_from[current]
+            path.append((self.x, self.y))
+            path.reverse()
+            return path
+        else:
+            path.append((self.x, self.y))
+            path.append((self.x, self.y))
+            return path
     
     #uses the astar but with the frontier not using area around the monster as a frontier
     def astar_monster(self, wrld, mx, my):
@@ -173,8 +278,8 @@ class TestCharacter(CharacterEntity):
             goal = wrld.exitcell
             if current == goal:
                 break
-            for next in self.look_for_empty_cell(wrld, current):
-                new_cost = cost_so_far[current] + self.cost(current, next)
+            for next in self.look_for_empty_cell_bomb(wrld, current):
+                new_cost = cost_so_far[current] + self.cost(wrld, current, next)
                 if next not in cost_so_far or new_cost < cost_so_far[next]:
                     cost_so_far[next] = new_cost
                     priority = new_cost + self.heuristic(goal, next)
@@ -190,16 +295,15 @@ class TestCharacter(CharacterEntity):
             if move[1] > best_val:
                 best_val = move[1]
                 new_move = move[0] 
-        # print("All possible moves with weight" + str(possible_moves))
-        # print("Next Move should Be" + str(new_move))
         return new_move
 
     def exp_probabilities(self, wrld, monster):
         possible_moves : list[tuple(tuple, float)] = []
         current_position = self.x, self.y
         # Returns the possible moves that the character can do
-        character_moves = self.look_for_empty_cell(wrld, current_position)
-        # print(character_moves)
+        character_moves = self.look_for_empty_cell_bomb(wrld, current_position)
+        # print("Currrent Position: " + str(current_position))
+        # print("Possible Moves: " + str(character_moves))
         for character_move in character_moves:
             end_values = self.find_values(wrld, character_move, monster)
             chance_value = 0
@@ -219,12 +323,6 @@ class TestCharacter(CharacterEntity):
 
         for monster_move in possible_monster_moves:
             next_distance = self.heuristic(possible_move, monster_move) 
-            # print("*****")
-            # print("OUR initial CHEBEY " + str(inital_distance))
-            # print("OUR poissible move " + str(possible_move))
-            # print("MONSTER Move " + str(monster_move))
-            # print("CHEYBEY Distance " + str(next_distance))
-            # print("****")
 
             if next_distance == 0:
                 value = -100
@@ -235,6 +333,24 @@ class TestCharacter(CharacterEntity):
             end_values.append(value)
         return end_values
 
+    def bombing(self):
+        if self.bombCycle <= 0:
+            self.place_bomb()
+        return self.x , self.y
+    
+    def bomb_blast(self, dx, dy):
+        if self.bomb_location != None:
+            for bx in range(-4, 5, 1):
+                if ((dx == (self.bomb_location[0] + bx)) and (dy == (self.bomb_location[1]))):
+                        return True
+            for by in range(-4, 5, 1):
+                    # print("Bomb Locations : " + str(self.bomb_location[0] + bx) + " : " +  str(self.bomb_location[1] + by))
+                    # print("Our Location : " + str(dx) + " : " +  str(dy))
+                if ((dx == (self.bomb_location[0])) and (dy == (self.bomb_location[1] + by))):
+                    return True
+        return False 
+
+    
     # def exp_max(self, wlrd, state):
     #     return max(self.exp_val(result(state,a)))
     
