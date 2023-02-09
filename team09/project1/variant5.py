@@ -13,7 +13,7 @@ from monsters.selfpreserving_monster import SelfPreservingMonster
 sys.path.insert(1, '../teamNN')
 from testcharacter import TestCharacter
 
-for i in range(1):
+for i in range(500):
     # Create the game
     random.seed(i) # TODO Change this if you want different random choices
     g = Game.fromfile('map.txt')
@@ -34,4 +34,4 @@ for i in range(1):
     ))
 
     # Run!
-    g.go()
+    g.go(1)
