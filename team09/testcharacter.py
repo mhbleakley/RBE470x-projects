@@ -363,3 +363,8 @@ class TestCharacter(CharacterEntity):
                 if ((dx == (self.bomb_location[0])) and (dy == (self.bomb_location[1] + by))):
                     return True
         return False 
+    
+    # Approximate Q-learning
+    def appQlearning(self, state, action):
+        return 
+        
