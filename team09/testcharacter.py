@@ -7,8 +7,43 @@ from entity import CharacterEntity
 from colorama import Fore, Back
 from queue import PriorityQueue
 from world import World
+import random
+import numpy as np
+from collections import deque
+from game import Game
+import torch
+
+from model import Linear_QNet, QTrainer 
+from helper import plot
+
+MAX_MEMORY = 100000
+BATCH_SIZE = 1000
+LR = 0.001
+
 
 class TestCharacter(CharacterEntity):
+    def __init__(self):
+        self.n_games = 0
+        self.epsilon = 0 # randomness
+        self.gamma = 0.9 #discount rate
+        self.memory = deque(maxlen = MAX_MEMORY) # pop left overloading memory
+        self.model = Linear_QNet(11,256, 3)
+        self.trainer = QTrainer(self.model, lr = LR, gamma = self.gamma)
+
+
+    different_moves = {
+            0: "N",
+            1: "S",
+            2: "E",
+            3: "W",
+            4: "NE",
+            5: "NW",
+            6: "SE",
+            7: "SW",
+            8: "X",
+            9: "B" 
+    }
+    
     # moves to iteration through the list of paths 
     moves = 1
     # our depth range for looking for the monster
@@ -36,6 +71,30 @@ class TestCharacter(CharacterEntity):
                            wrld.empty_at(current[0] + dx, current[1] + dy) or
                            (wrld.wall_at(current[0] + dx, current[1] + dy) and dy != -1)):
                                 cells.append((current[0] + dx, current[1] + dy))
+        # All done
+        return cells
+    
+    # Just looks for neighbors of 8 as the frontier
+    def look_for_empty_cell_states(self, wrld, current):
+        # List of empty cells
+        cells = []
+        # Go through neighboring cells
+        for dx in [-1, 0, 1]:
+            for dy in [-1, 0, 1]:
+                # Avoid out-of-bounds access
+                if ((current[0] + dx >= 0) and (current[0] + dx < wrld.width())):
+                # Avoid out-of-bounds access
+                    if ((current[1] + dy >= 0) and (current[1] + dy < wrld.height())):
+                    # Is this cell safe?
+                        if(wrld.exit_at(current[0] + dx, current[1] + dy) or
+                            wrld.empty_at(current[0] + dx, current[1] + dy)):
+                            cells.append(1)
+                        else:
+                            cells.append(0)
+                    else:
+                        cells.append(0)
+                else:
+                    cells.append(0)
         # All done
         return cells
     
@@ -173,53 +232,150 @@ class TestCharacter(CharacterEntity):
         self.move(next_move[0], next_move[1])
     
 
-    def do(self, wrld):
-        # detemines if the monster was found
+    def get_move(self, final_move):
+        if final_move[0] == 1:
+
+
+
+    def get_state(self, wrld):
+        state = [self.x, self.y]
         found, mx, my = self.monster_in_range(wrld)
-        current_pos = self.x, self.y
-        monster = mx, my
-        # Resets the bomb counter
-        if self.bombCycle == 3 and self.bomb_start:
-            self.bombCycle = 0
-            self.bomb_start = False
-            self.bomb_location = None
-
-        # FOUND STATE
-        if found:
-            # initializes values
-            self.moves = 1
-            self.path = [current_pos]
-
-            # BOMB AND RUN STATE
-            if self.bombCycle == 0: 
-                # places the bomb and moves away from monster
-                bomb_move = self.direction_after_bomb(wrld)
-                self.path.append(bomb_move)
-                self.bomb_location = self.bombing()
-                self.bomb_start = True
-
-            # EXPECTIMAX AWAY STATE
-            else:
-                # expectimaxes away from the monster
-                new_move = self.exp_max(wrld,monster)
-                self.path.append(new_move) 
-
-        #  A* TO TARGET STATE
+        if not found: 
+            state.append(-99)
+            state.append(-99)
         else:
-            # creates path with a
-            self.path = self.makePath(wrld, self.astar(wrld))
-            self.moves = 1
-        found = False
+            state.append(mx)
+            state.append(my)
+        
+        state.append(self.look_for_empty_cell_states(wrld,(self.x, self.y)))
 
-        # iterates through the path created 
-        if self.moves < len(self.path):
-            next = self.path[self.moves]  
-            dx = next[0] - self.x
-            dy = next[1] - self.y
-            self.move(dx,dy)
-            if self.bomb_start == True:
-                self.bombCycle += 1
-            self.moves += 1
+        state.append(self.heuristic((self.x, self.y), (mx, my)))
+
+        self.path = self.makePath(wrld, self.astar(wrld))
+        state.append(len(self.path))
+
+        bomb = 0
+        for dx in range(-4,4):
+            if wrld.bomb_at(self.x + dx, self.y) or wrld.bomb_at(self.x, self.y +dx):
+                bomb = 1
+        state.append(bomb)
+
+        if len(wrld.bomb) == 0 and len(wrld.explosions) == 0:
+            state.append(1)
+        else:
+            state.append(0)    
+        
+        return state
+
+    def get_action(self, state):
+        # random moves: tradeoff exploration / exploitation
+        self.epsilon = 80 - self.n_games
+        final_move = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        if random.randint(0, 200) < self.epsilon:
+            move = random.randint(0, 9)
+            final_move[move] = 1
+        else :
+            state0 = torch.tensor(state, dtype=torch.float)
+            prediction = self.model(state0)
+            move = torch.argmax(prediction).item()
+            final_move[move] = 1
+        
+        return final_move
+
+    def do(self, wrld):
+        plot_scores = []
+        plot_mean_score = []
+        total_score = 0
+        record = 0 
+ 
+        while True:
+            self.game.go(0) 
+
+            #get old state 
+            state_old = self.get_state(wrld)
+
+            #get move
+            final_move = self.get_action(state_old)
+
+            self.different_move[torch.argmax(final_move)] 
+
+            #perform move and get new state
+            reward, done, score = game 
+            state_new = self.get_state(game)
+
+            #train short memory
+            self.train_short_memory(state_old, final_move, reward, state_new, done)
+
+            #remember
+            self.remeber(state_old, final_move, reward, state_new, done)
+
+            if self.game.done:
+                #train long memory, plot the result
+                game.reset()
+                self.n_games += 1
+                self.train_long_memory()
+
+                    if score > record:
+                        record = score
+                        self.model.save()
+                print('Game', self.n_games, 'Score', score, ' Record:' , record)
+
+                plot_scores.append(score)
+                total_score += score
+                mean_score = total_score / self.n_games
+                plot_mean_score.append(mean_score)
+                plot(plot_scores, plot_mean_score)
+
+
+
+
+
+        # # detemines if the monster was found
+        # found, mx, my = self.monster_in_range(wrld)
+        # current_pos = self.x, self.y
+        # monster = mx, my
+        # # Resets the bomb counter
+        # if self.bombCycle == 3 and self.bomb_start:
+        #     self.bombCycle = 0
+        #     self.bomb_start = False
+        #     self.bomb_location = None
+
+        # # FOUND STATE
+        # if found:
+        #     # initializes values
+        #     self.moves = 1
+        #     self.path = [current_pos]
+
+        #     # BOMB AND RUN STATE
+        #     if self.bombCycle == 0: 
+        #         # places the bomb and moves away from monster
+        #         bomb_move = self.direction_after_bomb(wrld)
+        #         self.path.append(bomb_move)
+        #         self.bomb_location = self.bombing()
+        #         self.bomb_start = True
+
+        #     # EXPECTIMAX AWAY STATE
+        #     else:
+        #         # expectimaxes away from the monster
+        #         new_move = self.exp_max(wrld,monster)
+        #         self.path.append(new_move) 
+
+        # #  A* TO TARGET STATE
+        # else:
+        #     # creates path with a
+        #     self.path = self.makePath(wrld, self.astar(wrld))
+        #     self.moves = 1
+        # found = False
+
+        # # iterates through the path created 
+        # if self.moves < len(self.path):
+        #     next = self.path[self.moves]  
+        #     dx = next[0] - self.x
+        #     dy = next[1] - self.y
+        #     self.move(dx,dy)
+        #     if self.bomb_start == True:
+        #         self.bombCycle += 1
+        #     self.moves += 1
         
     # goes through the given A* came_from dictionary to find the path to the target cell
     def makePath(self, wrld, came_from):

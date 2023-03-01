@@ -2,12 +2,15 @@ import sys
 import math
 
 sys.path.insert(0, '../../bomberman')
+sys.path.insert(1, '..')
+
 import torch
 from entity import CharacterEntity
 from colorama import Fore, Back
 from queue import PriorityQueue
 from world import World
 from game import Game
+
 from monsters.stupid_monster import StupidMonster
 from monsters.selfpreserving_monster import SelfPreservingMonster
 
@@ -32,51 +35,50 @@ class TrainAgent:
         self.epsilon = 0 # randomness
         self.gamma = 0.9 #discount rate
         self.memory = deque(maxlen = MAX_MEMORY) # pop left overloading memory
-        self.g = Game.fromfile(mapfile) 
+        self.game = Game.fromfile(mapfile) 
 
         if(monster_position1[0] != -999 or monster_position1[1] != -999 ):
             if(monster_name1 == "aggressive"):
-                self.g.add_monster(SelfPreservingMonster(monster_name1, # name
+                self.game.add_monster(SelfPreservingMonster(monster_name1, # name
                                                     "A",      # avatar
                                                     monster_position1[0], monster_position1[1],     # position
                                                     1             # detection range
                 ))
             elif(monster_name1 == "selfpreserving"):
-                self.g.add_monster(SelfPreservingMonster(monster_name1, # name
+                self.game.add_monster(SelfPreservingMonster(monster_name1, # name
                                                     "S",          # avatar
                                                     monster_position1[0], monster_position1[1],        # position
                                                     1            # detection range
                 ))
             else : 
-                self.g.add_monster(StupidMonster(monster_name1, # name
+                self.game.add_monster(StupidMonster(monster_name1, # name
                                                     "S",          # avatar
                                                     monster_position1[0], monster_position1[1],        # position
                 ))
         if(monster_position2[0] != -999 or monster_position2[1] != -999 ):
             if(monster_name2 == "aggressive"):
-                self.g.add_monster(SelfPreservingMonster(monster_name2, # name
+                self.game.add_monster(SelfPreservingMonster(monster_name2, # name
                                                     "A",      # avatar
                                                     monster_position2[0], monster_position2[1],     # position
                                                     1             # detection range
                 ))
             elif(monster_name2 == "selfpreserving"):
-                self.g.add_monster(SelfPreservingMonster(monster_name2, # name
+                self.game.add_monster(SelfPreservingMonster(monster_name2, # name
                                                     "S",          # avatar
                                                     monster_position2[0], monster_position2[1],        # position
                                                     1            # detection range
                 ))
             else : 
-                self.g.add_monster(StupidMonster(monster_name2, # name
+                self.game.add_monster(StupidMonster(monster_name2, # name
                                                     "S",          # avatar
                                                     monster_position2[0], monster_position2[1],        # position
                 ))
 
 
-        self.g.add_character(TestCharacter("me", # name
+        self.game.add_character(TestCharacter("me", # name
                               "C",  # avatar
                               0, 0  # position
         ))
-        TODO:  #model and trainer 
         self.model = Linear_QNet(11,256, 3)
         self.trainer = QTrainer(self.model, lr = LR, gamma = self.gamma)
 
@@ -122,7 +124,7 @@ def train():
     agent = TrainAgent()
     ## game = 
     while True:
-        self.g.go(0) 
+        self.game.go(0) 
         #get old state 
         state_old = agent.get_state(game)
 
@@ -138,6 +140,9 @@ def train():
 
         #remember
         agent.remeber(state_old, final_move, reward, state_new, done)
+
+        self.g.done:
+
 
         if done:
             #train long memory, plot the result
@@ -156,9 +161,6 @@ def train():
             plot_mean_score.append(mean_score)
             plot(plot_scores, plot_mean_score)
             
-
-
-
 
 if __name__ == '__main__':
     train()
