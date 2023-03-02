@@ -116,51 +116,47 @@ class TrainAgent:
         return final_move
 
 
-def train():
-    plot_scores = []
-    plot_mean_score = []
-    total_score = 0
-    record = 0 
-    agent = TrainAgent()
-    ## game = 
-    while True:
-        self.game.go(0) 
-        #get old state 
-        state_old = agent.get_state(game)
+    def train(self):
+        plot_scores = []
+        plot_mean_score = []
+        total_score = 0
+        record = 0 
 
-        #get move
-        final_move = agent.get_action(state_old)
+        ## game = 
+        while True:
+            self.game.go(0) 
 
-        #perform move and get new state
-        reward, done, score = game 
-        state_new = agent.get_state(game)
+            #get old state 
+            state_old = self.get_state(game)
 
-        #train short memory
-        agent.train_short_memory(state_old, final_move, reward, state_new, done)
+            #get move
+            final_move = self.get_action(state_old)
+            TestCharacter.do()
 
-        #remember
-        agent.remeber(state_old, final_move, reward, state_new, done)
+            #perform move and get new state
+            reward, done, score = game 
+            state_new = self.get_state(game)
 
-        self.g.done:
+            #train short memory
+            self.train_short_memory(state_old, final_move, reward, state_new, done)
 
+            #remember
+            self.remeber(state_old, final_move, reward, state_new, done)
 
-        if done:
-            #train long memory, plot the result
-            game.reset()
-            agent.n_games += 1
-            agent.train_long_memory()
+            if self.game.done:
+                #train long memory, plot the result
+                game.reset()
+                self.n_games += 1
+                self.train_long_memory()
 
-                if score > record:
-                    record = score
-                    agent.model.save()
-            print('Game', agent.n_games, 'Score', score, ' Record:' , record)
+                    if score > record:
+                        record = score
+                        self.model.save()
+                print('Game', self.n_games, 'Score', score, ' Record:' , record)
 
-            plot_scores.append(score)
-            total_score += score
-            mean_score = total_score / agent.n_games
-            plot_mean_score.append(mean_score)
-            plot(plot_scores, plot_mean_score)
-            
-
-if __name__ == '__main__':
-    train()
+                plot_scores.append(score)
+                total_score += score
+                mean_score = total_score / self.n_games
+                plot_mean_score.append(mean_score)
+                plot(plot_scores, plot_mean_score)
+                

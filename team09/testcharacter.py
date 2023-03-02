@@ -12,6 +12,8 @@ import numpy as np
 from collections import deque
 from game import Game
 import torch
+import pandas as pd
+import csv
 
 from model import Linear_QNet, QTrainer 
 from helper import plot
@@ -22,32 +24,23 @@ LR = 0.001
 
 
 class TestCharacter(CharacterEntity):
-    def __init__(self):
-        self.n_games = 0
-        self.epsilon = 0 # randomness
-        self.gamma = 0.9 #discount rate
-        self.memory = deque(maxlen = MAX_MEMORY) # pop left overloading memory
-        self.model = Linear_QNet(11,256, 3)
-        self.trainer = QTrainer(self.model, lr = LR, gamma = self.gamma)
 
 
-    different_moves = {
-            0: "N",
-            1: "S",
-            2: "E",
-            3: "W",
-            4: "NE",
-            5: "NW",
-            6: "SE",
-            7: "SW",
-            8: "X",
-            9: "B" 
-    }
+    n_games = 0
+    epsilon = 0 # randomness
+    gamma = 0.9 #discount rate
+    memory = deque(maxlen = MAX_MEMORY) # pop left overloading memory
+    model = Linear_QNet(17,256,10)
+    trainer = QTrainer(model, lr = LR, gamma = gamma)
     
+    
+    old = []
+
+    prev_exit = 0
     # moves to iteration through the list of paths 
-    moves = 1
+    moves = 0
     # our depth range for looking for the monster
-    rnge = 2
+    rnge = 3
     # used to determine if the bomb explosion is gone
     bombCycle = 0
     # used to update the placed bomb location
@@ -231,12 +224,6 @@ class TestCharacter(CharacterEntity):
         next_move = self.direction_after_bomb(wrld)
         self.move(next_move[0], next_move[1])
     
-
-    def get_move(self, final_move):
-        if final_move[0] == 1:
-
-
-
     def get_state(self, wrld):
         state = [self.x, self.y]
         found, mx, my = self.monster_in_range(wrld)
@@ -247,7 +234,7 @@ class TestCharacter(CharacterEntity):
             state.append(mx)
             state.append(my)
         
-        state.append(self.look_for_empty_cell_states(wrld,(self.x, self.y)))
+        state.extend(self.look_for_empty_cell_states(wrld,(self.x, self.y)))
 
         state.append(self.heuristic((self.x, self.y), (mx, my)))
 
@@ -260,16 +247,16 @@ class TestCharacter(CharacterEntity):
                 bomb = 1
         state.append(bomb)
 
-        if len(wrld.bomb) == 0 and len(wrld.explosions) == 0:
+        if len(wrld.bombs) == 0 and len(wrld.explosions) == 0:
             state.append(1)
         else:
-            state.append(0)    
-        
-        return state
+            state.append(0)
+
+        return state 
 
     def get_action(self, state):
         # random moves: tradeoff exploration / exploitation
-        self.epsilon = 80 - self.n_games
+        self.epsilon =  30 - self.moves
         final_move = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         if random.randint(0, 200) < self.epsilon:
             move = random.randint(0, 9)
@@ -278,57 +265,183 @@ class TestCharacter(CharacterEntity):
             state0 = torch.tensor(state, dtype=torch.float)
             prediction = self.model(state0)
             move = torch.argmax(prediction).item()
+            print("CHOSEN" +str(move))
             final_move[move] = 1
         
         return final_move
+    
+    def get_score(self, wrld):
+        return wrld.scores["me"]
+
+    # def get_weights(self):
+    #     weights = pd.read_csv('weights.csv')
+    #     weight_1 = weights["weight1"][0]
+    #     weight_2 = weights["weight2"][0]
+    #     weight_3 = weights["weight3"][0]
+    #     self.weights=[weight_1,weight_2,weight_3]
+
+    def get_games(self):
+        games = pd.read_csv('games.csv')
+        gameNUM = games[0]
+        self.n_games=[gameNUM]
+
+
+    def get_move(self, final_move):
+        dx, dy, bomb = 0, 0, False
+        if(final_move[0] == 1):
+            #North
+            dx = 0
+            dy = -1
+            bomb = False
+        elif (final_move[1] == 1):
+            #NorthEast
+            dx = 1
+            dy = -1
+            bomb = False
+        elif (final_move[2] == 1):
+            #East
+            dx = 1
+            dy = 0
+            bomb = False
+        elif (final_move[3] == 1):
+            #SouthEast
+            dx = 1
+            dy = 1
+            bomb = False
+        elif (final_move[4] == 1):
+            #South
+            dx = 0
+            dy = 1
+            bomb = False
+        elif (final_move[5] == 1):
+            #SouthWest
+            dx = -1
+            dy = 1
+            bomb = False
+        elif (final_move[6] == 1):
+            #West
+            dx = -1
+            dy = 0
+            bomb = False
+        elif (final_move[7] == 1):
+            #NorthWest
+            dx = -1
+            dy = -1
+            bomb = False
+        elif (final_move[8] == 1):
+            #Don't Move
+            dx = 0
+            dy = 0
+            bomb = False
+        elif (final_move[9] == 1):
+            #BOMB
+            dx = 0
+            dy = 0
+            bomb = True
+        
+        return dx, dy, bomb
+    
+    def get_reward(self, wrld, dx, dy ):
+        reward = 0
+
+        found, mx, my = self.monster_in_range(wrld)
+        if found == True:
+            reward -= 2
+        else:
+            reward += 2
+        if mx == range(self.x-1, self.x+1) or  my == range(self.y-1, self.y+1):
+            reward -= 10
+        else:
+            reward += 4
+        if len(self.makePath_reward(wrld, self.astar_reward(wrld, dx, dy), dx, dy)) >= self.old[14]:
+            reward -= 50
+        else:
+            reward += 100
+        return reward
+    
+    def remeber(self, state, action, reward, next_state, done):
+        self.memory.append((state, action, reward, next_state, done))
+    
+    def train_long_memory(self):
+        if len(self.memory) > BATCH_SIZE:
+            mini_sample = random.sample(self.memory, BATCH_SIZE)
+        else:
+            mini_sample = self.memory
+        states, actions, rewards, next_states, dones = zip(*mini_sample)
+        self.trainer.train_step(states, actions, rewards, next_states, dones)
+
+    def train_short_memory(self, state, action, reward, next_state, done):
+        self.trainer.train_step(state, action, reward, next_state, done)
+
 
     def do(self, wrld):
+        self.get_games()
+        print("********************************************************************************"  + str(self.n_games))
+
+        if self.moves == 30:
+            self.model.load_state_dict(torch.load('./model\model.pth'), strict=False)
+            
         plot_scores = []
         plot_mean_score = []
         total_score = 0
         record = 0 
- 
-        while True:
-            self.game.go(0) 
 
-            #get old state 
-            state_old = self.get_state(wrld)
+        #get old state 
+        state_old = self.get_state(wrld)
+        print("Previous STATE: " + str(state_old))
+        self.old = state_old
+        #get move
+        final_move = self.get_action(state_old)
+        print("MOVE CHOSEN: " + str(final_move))
 
-            #get move
-            final_move = self.get_action(state_old)
+        dx, dy, bomb = self.get_move(final_move)
+        print("OLD COORDs " + str(self.x) + ", " + str(self.y))
+        if bomb == True:
+            self.bombing()
+            self.move(dx, dy)
+        else:
+            self.move(dx, dy)
+        
+        score = self.get_score(wrld)
+        reward = self.get_reward(wrld, dx, dy)
+        print("REWARD CHOSEN: " + str(reward))
 
-            self.different_move[torch.argmax(final_move)] 
+        found, mx, my = self.monster_in_range(wrld)
+        if (found and mx == self.x and my == self.y) or (self.x == wrld.exitcell[0] and self.x == wrld.exitcell[1]):
+            done = True
+        else:
+            done = False
 
-            #perform move and get new state
-            reward, done, score = game 
-            state_new = self.get_state(game)
+        state_new = self.get_state(wrld)
 
-            #train short memory
-            self.train_short_memory(state_old, final_move, reward, state_new, done)
+        #train short memory
+        self.train_short_memory(state_old, final_move, reward, state_new, done)
 
-            #remember
-            self.remeber(state_old, final_move, reward, state_new, done)
+        #remember
+        self.remeber(state_old, final_move, reward, state_new, done)
+        
+        if self.moves >= 50:
+            self.train_long_memory()
+            self.model.save()
+            self.moves = 0
+        else:
+            self.moves += 1 
+        
 
-            if self.game.done:
-                #train long memory, plot the result
-                game.reset()
-                self.n_games += 1
-                self.train_long_memory()
+        if done:
+            self.n_games += 1
+            self.train_long_memory()
 
-                    if score > record:
-                        record = score
-                        self.model.save()
-                print('Game', self.n_games, 'Score', score, ' Record:' , record)
+            if score > record:
+                    record = score
+                    self.model.save()
+            print('Game', self.n_games, 'Score', score, ' Record:' , record)
 
-                plot_scores.append(score)
-                total_score += score
-                mean_score = total_score / self.n_games
-                plot_mean_score.append(mean_score)
-                plot(plot_scores, plot_mean_score)
-
-
-
-
+            # plot_scores.append(score)
+            # total_score += score
+            # mean_score = total_score / self.n_games
+            # plot_mean_score.append(mean_score)
+            # plot(plot_scores, plot_mean_score)
 
         # # detemines if the monster was found
         # found, mx, my = self.monster_in_range(wrld)
@@ -419,6 +532,51 @@ class TestCharacter(CharacterEntity):
                     came_from[next] = current
         return came_from
     
+
+    def makePath_reward(self, wrld, came_from, dx, dy):
+        current = wrld.exitcell
+        path = []
+        # if the target cell is in dictionary do
+        if current in came_from:              
+            while current != (self.x + dx, self.y + dy):
+                path.append(current)
+                current = came_from[current]
+            path.append((self.x + dx, self.y + dy))
+            path.reverse()
+            return path
+        else:
+            # stay still
+            path.append((self.x + dx, self.y + dy))
+            path.append((self.x + dx, self.y + dy))
+            return path
+
+
+    def astar_reward(self, wrld, dx, dy):
+        # initializes A* variables
+        frontier = PriorityQueue()
+        came_from = {}
+        cost_so_far = {}
+
+        frontier.put((self.x + dx, self.y + dy), 0)
+        came_from[(self.x + dx, self.y + dy)] = None
+        cost_so_far[(self.x + dx, self.y + dy)] = 0
+        
+        # continues if there is a frontier
+        while not frontier.empty():
+            current = frontier.get()
+            goal = wrld.exitcell
+            if current == goal:
+                break
+            for next in self.look_for_empty_cell_bomb(wrld, current):
+                new_cost = cost_so_far[current] + self.cost(wrld, current, next)
+                if next not in cost_so_far or new_cost < cost_so_far[next]:
+                    cost_so_far[next] = new_cost
+                    priority = new_cost + self.heuristic(goal, next)
+                    frontier.put(next, priority)
+                    came_from[next] = current
+        return came_from
+
+
     # Normal A* star using lecture pseduo code 
     def astar(self, wrld):
         # initializes A* variables
