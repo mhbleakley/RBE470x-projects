@@ -27,7 +27,7 @@ model = Linear_QNet(13,256,13)
 model.load_state_dict(torch.load('../project1/model/model.pth'), strict=False)
 
 # Create the game
-for i in range(1000):
+for i in range(5000):
     random.seed(i) # TODO Change this if you want different random choices
     g = Game.fromfile('map.txt')
     g.add_monster(StupidMonster("stupid", # name

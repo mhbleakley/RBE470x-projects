@@ -33,12 +33,10 @@ class TestCharacter(CharacterEntity):
         self.model = model
         gamma = 0.95 #discount rate
         self.trainer = QTrainer(self.model, lr = LR, gamma = gamma)
-
+        self.epsilon = 1 # randomness
     n_games = 0
-    epsilon = 1 # randomness
+    
     memory = deque(maxlen = MAX_MEMORY) # pop left overloading memory
-
-
 
     old = []
 
@@ -259,9 +257,11 @@ class TestCharacter(CharacterEntity):
 
     def get_action(self, state):
         # random moves: tradeoff exploration / exploitation
-        self.epsilon =  300 - self.n_games
+        self.epsilon -= 0.003 * self.n_games
+        if self.epsilon < .01:
+            self.epsilon = .01
         final_move = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-        if random.randint(0, 100) < self.epsilon:
+        if random.random() < self.epsilon:
             move = random.randint(0, 12)
             final_move[move] = 1
         else :
@@ -386,34 +386,45 @@ class TestCharacter(CharacterEntity):
         
         return dx, dy, bomb
     
-    def get_reward(self, wrld, dx, dy, hit_wall, hit_monster, hit_me, reaches_exit, monster_kill):
+    def get_reward(self, wrld, dx, dy, hit_wall, hit_monster, hit_me, reaches_exit, monster_kill, used_bomb):
         reward = 0
 
-        found, mx, my = self.monster_in_range(wrld)
-        if found == True:
-            reward -= 2
-        else:
-            reward += 2
-        if mx == range(self.x-1, self.x+1) or  my == range(self.y-1, self.y+1):
-            reward -= 10
-        else:
-            reward += 4
+        # found, mx, my = self.monster_in_range(wrld)
+        # if found == True:
+        #     reward -= 2
+        # else:
+        #     reward += 2
+        # if mx == range(self.x-1, self.x+1) or  my == range(self.y-1, self.y+1):
+        #     reward -= 10
+        # else:
+        #     reward += 4
 
-        new_distance = len(self.makePath_reward(wrld, self.astar_reward(wrld, dx, dy), dx, dy))
+        # new_distance = len(self.makePath_reward(wrld, self.astar_reward(wrld, dx, dy), dx, dy))
+        # print(new_distance)
+        # if new_distance >= len(self.path):
+        #     reward -= 500/(1+new_distance)
+        # elif new_distance < len(self.path):
+        #     reward += 100/(1+new_distance)
+        # else:
+        #     reward += 500/(1+new_distance)
 
-        if new_distance >= len(self.path):
-            reward -= 500/(1+new_distance)
-        else:
-            reward += 500/(1+new_distance)
+        if dx == 0 and dy == 0:
+            reward -= 100
 
-        if hit_wall == True:
-            reward += 20
+        if dy > 0 or dx > 0:
+            reward += 10
+
+        # if hit_wall == True:
+        #     reward += 20
+
+        if used_bomb == True:
+            reward -= 1000
          
         if hit_monster == True:
-            reward += 3000
+            reward += 300
         
         if reaches_exit == True:
-            reward += 2000
+            reward += 5000
 
         if monster_kill == True:
             reward -= 5000
@@ -443,9 +454,9 @@ class TestCharacter(CharacterEntity):
     def do(self, wrld):
         (next_wrld, events) = SensedWorld.next(wrld) 
 
-        plot_scores = []
-        plot_mean_score = []
-        total_score = 0
+        # plot_scores = []
+        # plot_mean_score = []
+        # total_score = 0
         record = self.get_record() 
 
         self.get_games()
@@ -459,8 +470,11 @@ class TestCharacter(CharacterEntity):
 
         dx, dy, bomb = self.get_move(final_move)
 
+        # print("bomb:", bomb)
+        used_bomb = False
         if bomb == True:
             self.bombing()
+            used_bomb = True
             self.move(dx, dy)
         else:
             self.move(dx, dy)
@@ -494,9 +508,10 @@ class TestCharacter(CharacterEntity):
             if e.tpe == Event.CHARACTER_KILLED_BY_MONSTER:
                 monster_kill = True
 
+        
 
-        reward = self.get_reward(wrld, dx, dy, hit_wall, hit_monster, hit_me, reaches_exit, monster_kill)
-     
+        reward = self.get_reward(wrld, dx, dy, hit_wall, hit_monster, hit_me, reaches_exit, monster_kill, used_bomb)
+        print(reward)
         done = False
 
         for e in events:
@@ -512,10 +527,11 @@ class TestCharacter(CharacterEntity):
         state_new = self.get_state(next_wrld)
 
         #train short memory
-        self.train_short_memory(state_old, final_move, reward, state_new, done)
-
-        #remember
+        # self.train_short_memory(state_old, final_move, reward, state_new, done)
         self.remeber(state_old, final_move, reward, state_new, done)
+        self.train_long_memory()
+        #remember
+        
         
         if done:
             self.train_long_memory()
