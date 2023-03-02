@@ -13,6 +13,11 @@ from monsters.stupid_monster import StupidMonster
 sys.path.insert(1, '../teamNN')
 from testcharacter import TestCharacter
 
+with open("../games.csv", 'w') as csvfile:
+    updater = csv.writer(csvfile)
+    updater.writerow([0])
+    csvfile.close()
+
 # Create the game
 for i in range(100):
     random.seed(i) # TODO Change this if you want different random choices
@@ -31,8 +36,8 @@ for i in range(100):
     # Run!
     g.go(1)
 
-    with open("games.csv", 'w') as csvfile:
+    with open("../games.csv", 'w') as csvfile:
         updater = csv.writer(csvfile)
-        updater.writerow([i])
+        updater.writerow([i + 1])
         csvfile.close()
     

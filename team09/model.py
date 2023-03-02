@@ -52,6 +52,8 @@ class QTrainer:
         
         pred = self.model(state)
 
+
+
         target = pred.clone()
 
         for idx in range(len(done)):

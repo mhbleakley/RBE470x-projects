@@ -1,7 +1,9 @@
 # This is necessary to find the main code
 import sys
 import math
-sys.path.insert(0, '../bomberman')
+sys.path.insert(0, '../../../bomberman')
+
+
 # Import necessary stuff
 from entity import CharacterEntity
 from colorama import Fore, Back
@@ -14,25 +16,28 @@ from game import Game
 import torch
 import pandas as pd
 import csv
+from sensed_world import SensedWorld
+from events import *
 
 from model import Linear_QNet, QTrainer 
 from helper import plot
 
 MAX_MEMORY = 100000
 BATCH_SIZE = 1000
-LR = 0.001
+LR = 0.5
 
 
 class TestCharacter(CharacterEntity):
 
 
     n_games = 0
-    epsilon = 0 # randomness
+    epsilon = 1 # randomness
     gamma = 0.9 #discount rate
     memory = deque(maxlen = MAX_MEMORY) # pop left overloading memory
     model = Linear_QNet(17,256,10)
     trainer = QTrainer(model, lr = LR, gamma = gamma)
     
+    model.load_state_dict(torch.load('../project1/model\model.pth'), strict=False)
     
     old = []
 
@@ -246,6 +251,7 @@ class TestCharacter(CharacterEntity):
             if wrld.bomb_at(self.x + dx, self.y) or wrld.bomb_at(self.x, self.y +dx):
                 bomb = 1
         state.append(bomb)
+        print(bomb)
 
         if len(wrld.bombs) == 0 and len(wrld.explosions) == 0:
             state.append(1)
@@ -256,35 +262,46 @@ class TestCharacter(CharacterEntity):
 
     def get_action(self, state):
         # random moves: tradeoff exploration / exploitation
-        self.epsilon =  30 - self.moves
+        # self.epsilon =  50 - self.n_games
+        # final_move = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        # if random.randint(0, 50) < self.epsilon:
+        #     move = random.randint(0, 9)
+        #     final_move[move] = 1
+        # else :
+        #     state0 = torch.tensor(state, dtype=torch.float)
+        #     prediction = self.model(state0)
+        #     move = torch.argmax(prediction).item()
+        #     print(move)
+        #     final_move[int(move)] = 1
+        self.epsilon =  self.epsilon*0.95
         final_move = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-        if random.randint(0, 200) < self.epsilon:
+        if random.randint(0, 1) < self.epsilon:
             move = random.randint(0, 9)
             final_move[move] = 1
         else :
             state0 = torch.tensor(state, dtype=torch.float)
             prediction = self.model(state0)
             move = torch.argmax(prediction).item()
-            print("CHOSEN" +str(move))
-            final_move[move] = 1
+            final_move[int(move)] = 1
+        
+        print(final_move)
+        
         
         return final_move
     
     def get_score(self, wrld):
         return wrld.scores["me"]
 
-    # def get_weights(self):
-    #     weights = pd.read_csv('weights.csv')
-    #     weight_1 = weights["weight1"][0]
-    #     weight_2 = weights["weight2"][0]
-    #     weight_3 = weights["weight3"][0]
-    #     self.weights=[weight_1,weight_2,weight_3]
-
     def get_games(self):
-        games = pd.read_csv('games.csv')
-        gameNUM = games[0]
-        self.n_games=[gameNUM]
-
+        # data = pd.read_csv("../games.csv")
+        # print(data)
+        # self.n_games = data[0]
+        with open("../games.csv",'r') as f:
+            data = csv.reader(f)  
+            for row in data:
+                self.n_games = int(row[0])
+                break
+                
 
     def get_move(self, final_move):
         dx, dy, bomb = 0, 0, False
@@ -341,7 +358,7 @@ class TestCharacter(CharacterEntity):
         
         return dx, dy, bomb
     
-    def get_reward(self, wrld, dx, dy ):
+    def get_reward(self, wrld, dx, dy, hit_wall, hit_monster, hit_me, reaches_exit, monster_kill):
         reward = 0
 
         found, mx, my = self.monster_in_range(wrld)
@@ -353,10 +370,29 @@ class TestCharacter(CharacterEntity):
             reward -= 10
         else:
             reward += 4
-        if len(self.makePath_reward(wrld, self.astar_reward(wrld, dx, dy), dx, dy)) >= self.old[14]:
-            reward -= 50
+        new_distance = len(self.makePath_reward(wrld, self.astar_reward(wrld, dx, dy), dx, dy))
+        if new_distance >= self.old[14]:
+            reward -= 500/(1+new_distance)
         else:
-            reward += 100
+            reward += 500/(1+new_distance)
+
+        if hit_wall == True:
+            reward += 300
+         
+        if hit_monster == True:
+            reward += 3000
+        
+        if reaches_exit == True:
+            reward += 2000
+
+        if monster_kill == True:
+            reward -= 5000
+
+        if hit_me == True:
+            reward -= 10000
+        
+        reward -= self.moves
+
         return reward
     
     def remeber(self, state, action, reward, next_state, done):
@@ -375,11 +411,7 @@ class TestCharacter(CharacterEntity):
 
 
     def do(self, wrld):
-        self.get_games()
-        print("********************************************************************************"  + str(self.n_games))
-
-        if self.moves == 30:
-            self.model.load_state_dict(torch.load('./model\model.pth'), strict=False)
+        (next_wrld, events) = SensedWorld.next(wrld) 
             
         plot_scores = []
         plot_mean_score = []
@@ -388,31 +420,64 @@ class TestCharacter(CharacterEntity):
 
         #get old state 
         state_old = self.get_state(wrld)
-        print("Previous STATE: " + str(state_old))
+
         self.old = state_old
         #get move
         final_move = self.get_action(state_old)
-        print("MOVE CHOSEN: " + str(final_move))
 
         dx, dy, bomb = self.get_move(final_move)
-        print("OLD COORDs " + str(self.x) + ", " + str(self.y))
+
         if bomb == True:
             self.bombing()
             self.move(dx, dy)
         else:
             self.move(dx, dy)
         
+        self.moves += 1
+
         score = self.get_score(wrld)
-        reward = self.get_reward(wrld, dx, dy)
-        print("REWARD CHOSEN: " + str(reward))
 
-        found, mx, my = self.monster_in_range(wrld)
-        if (found and mx == self.x and my == self.y) or (self.x == wrld.exitcell[0] and self.x == wrld.exitcell[1]):
-            done = True
-        else:
-            done = False
+        hit_wall = False
+        for e in events:
+            if e.tpe == Event.BOMB_HIT_WALL:
+                hit_wall = True
 
-        state_new = self.get_state(wrld)
+        hit_monster = False
+        for e in events:
+            if e.tpe == Event.BOMB_HIT_MONSTER:
+                hit_monster = True
+
+        hit_me = False
+        for e in events:
+            if e.tpe == Event.BOMB_HIT_CHARACTER:
+                hit_me = True
+        
+        reaches_exit = False
+        for e in events:
+            if e.tpe == Event.CHARACTER_FOUND_EXIT:
+                reaches_exit = True
+        
+        monster_kill = False
+        for e in events:
+            if e.tpe == Event.CHARACTER_KILLED_BY_MONSTER:
+                monster_kill = True
+
+
+        reward = self.get_reward(wrld, dx, dy, hit_wall, hit_monster, hit_me, reaches_exit, monster_kill)
+     
+        done = False
+
+        for e in events:
+            if e.tpe == Event.CHARACTER_KILLED_BY_MONSTER or e.tpe == Event.CHARACTER_FOUND_EXIT or e.tpe == Event.BOMB_HIT_CHARACTER:
+                done = True   
+
+        # found, mx, my = self.monster_in_range(wrld)
+        # if (found and mx == self.x and my == self.y) or (self.x == wrld.exitcell[0] and self.x == wrld.exitcell[1]):
+        #     done = True
+        # else:
+        #     done = False
+
+        state_new = self.get_state(next_wrld)
 
         #train short memory
         self.train_short_memory(state_old, final_move, reward, state_new, done)
@@ -420,16 +485,25 @@ class TestCharacter(CharacterEntity):
         #remember
         self.remeber(state_old, final_move, reward, state_new, done)
         
-        if self.moves >= 50:
+        if done:
             self.train_long_memory()
             self.model.save()
-            self.moves = 0
-        else:
-            self.moves += 1 
+
+            if score > record:
+                    record = score
+                    self.model.save()
+            print('Game', self.n_games, 'Score', score, ' Record:' , record)
+
+
+        # if self.moves >= 50:
+        #     self.train_long_memory()
+        #     self.model.save()
+        #     self.moves = 0
+        # else:
+        #     self.moves += 1 
         
 
         if done:
-            self.n_games += 1
             self.train_long_memory()
 
             if score > record:
