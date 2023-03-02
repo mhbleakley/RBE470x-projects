@@ -22,8 +22,6 @@ class Linear_QNet(nn.Module):
             os.makedirs(model_folder_path)
         
         file_name = os.path.join(model_folder_path, file_name)
-        print("***************************************************")
-        print(str(file_name))
 
         torch.save(self.state_dict(), file_name)
 

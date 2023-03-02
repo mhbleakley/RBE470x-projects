@@ -24,21 +24,22 @@ from helper import plot
 
 MAX_MEMORY = 100000
 BATCH_SIZE = 1000
-LR = 0.5
+LR = 0.001
 
 
 class TestCharacter(CharacterEntity):
-
+    def __init__(self, name, avatar, x, y, model):
+        CharacterEntity.__init__(self, name, avatar, x, y)
+        self.model = model
+        gamma = 0.95 #discount rate
+        self.trainer = QTrainer(self.model, lr = LR, gamma = gamma)
 
     n_games = 0
     epsilon = 1 # randomness
-    gamma = 0.9 #discount rate
     memory = deque(maxlen = MAX_MEMORY) # pop left overloading memory
-    model = Linear_QNet(17,256,10)
-    trainer = QTrainer(model, lr = LR, gamma = gamma)
-    
-    model.load_state_dict(torch.load('../project1/model\model.pth'), strict=False)
-    
+
+
+
     old = []
 
     prev_exit = 0
@@ -230,28 +231,24 @@ class TestCharacter(CharacterEntity):
         self.move(next_move[0], next_move[1])
     
     def get_state(self, wrld):
-        state = [self.x, self.y]
+        state = []
         found, mx, my = self.monster_in_range(wrld)
         if not found: 
-            state.append(-99)
-            state.append(-99)
+            state.append(0)
         else:
-            state.append(mx)
-            state.append(my)
+            distance_monster = self.heuristic((mx, my),(self.x, self.y))
+            state.append(1/(1+distance_monster))
         
         state.extend(self.look_for_empty_cell_states(wrld,(self.x, self.y)))
 
-        state.append(self.heuristic((self.x, self.y), (mx, my)))
-
         self.path = self.makePath(wrld, self.astar(wrld))
-        state.append(len(self.path))
+        state.append(1/(1 + len(self.path)))
 
         bomb = 0
         for dx in range(-4,4):
             if wrld.bomb_at(self.x + dx, self.y) or wrld.bomb_at(self.x, self.y +dx):
                 bomb = 1
         state.append(bomb)
-        print(bomb)
 
         if len(wrld.bombs) == 0 and len(wrld.explosions) == 0:
             state.append(1)
@@ -262,29 +259,29 @@ class TestCharacter(CharacterEntity):
 
     def get_action(self, state):
         # random moves: tradeoff exploration / exploitation
-        # self.epsilon =  50 - self.n_games
+        self.epsilon =  300 - self.n_games
+        final_move = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        if random.randint(0, 100) < self.epsilon:
+            move = random.randint(0, 12)
+            final_move[move] = 1
+        else :
+            state0 = torch.tensor(state, dtype=torch.float)
+            prediction = self.model(state0)
+            move = torch.argmax(prediction).item()
+            print(move)
+            final_move[int(move)] = 1
+        # self.epsilon =  self.epsilon*0.95
         # final_move = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-        # if random.randint(0, 50) < self.epsilon:
+        # if random.randint(0, 1) < self.epsilon:
         #     move = random.randint(0, 9)
         #     final_move[move] = 1
         # else :
         #     state0 = torch.tensor(state, dtype=torch.float)
         #     prediction = self.model(state0)
         #     move = torch.argmax(prediction).item()
-        #     print(move)
         #     final_move[int(move)] = 1
-        self.epsilon =  self.epsilon*0.95
-        final_move = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-        if random.randint(0, 1) < self.epsilon:
-            move = random.randint(0, 9)
-            final_move[move] = 1
-        else :
-            state0 = torch.tensor(state, dtype=torch.float)
-            prediction = self.model(state0)
-            move = torch.argmax(prediction).item()
-            final_move[int(move)] = 1
         
-        print(final_move)
+        # print(final_move)
         
         
         return final_move
@@ -301,6 +298,19 @@ class TestCharacter(CharacterEntity):
             for row in data:
                 self.n_games = int(row[0])
                 break
+                
+
+    def set_record(self, record):
+        with open("../record.csv", 'w') as csvfile:
+            updater = csv.writer(csvfile)
+            updater.writerow([record])
+            csvfile.close()
+        
+    def get_record(self):
+         with open("../record.csv",'r') as f:
+            data = csv.reader(f)  
+            for row in data:
+                return int(row[0])
                 
 
     def get_move(self, final_move):
@@ -351,10 +361,28 @@ class TestCharacter(CharacterEntity):
             dy = 0
             bomb = False
         elif (final_move[9] == 1):
-            #BOMB
-            dx = 0
-            dy = 0
+            #BOMBNE
+            dx = 1
+            dy = -1
             bomb = True
+        
+        elif (final_move[10] == 1):
+            #BOMBSE
+            dx = 1
+            dy = 1
+            bomb = True
+        
+        elif (final_move[11] == 1):
+            #BOMBSW
+            dx = -1
+            dy = 1
+            bomb = True
+        elif (final_move[12] == 1):
+            #BOMBSE
+            dx = -1
+            dy = -1
+            bomb = True
+        
         
         return dx, dy, bomb
     
@@ -370,14 +398,16 @@ class TestCharacter(CharacterEntity):
             reward -= 10
         else:
             reward += 4
+
         new_distance = len(self.makePath_reward(wrld, self.astar_reward(wrld, dx, dy), dx, dy))
-        if new_distance >= self.old[14]:
+
+        if new_distance >= len(self.path):
             reward -= 500/(1+new_distance)
         else:
             reward += 500/(1+new_distance)
 
         if hit_wall == True:
-            reward += 300
+            reward += 20
          
         if hit_monster == True:
             reward += 3000
@@ -412,11 +442,13 @@ class TestCharacter(CharacterEntity):
 
     def do(self, wrld):
         (next_wrld, events) = SensedWorld.next(wrld) 
-            
+
         plot_scores = []
         plot_mean_score = []
         total_score = 0
-        record = 0 
+        record = self.get_record() 
+
+        self.get_games()
 
         #get old state 
         state_old = self.get_state(wrld)
@@ -487,11 +519,11 @@ class TestCharacter(CharacterEntity):
         
         if done:
             self.train_long_memory()
-            self.model.save()
 
             if score > record:
-                    record = score
+                    self.set_record(score)
                     self.model.save()
+                    
             print('Game', self.n_games, 'Score', score, ' Record:' , record)
 
 
@@ -503,13 +535,13 @@ class TestCharacter(CharacterEntity):
         #     self.moves += 1 
         
 
-        if done:
-            self.train_long_memory()
+        # if done:
+        #     self.train_long_memory()
 
-            if score > record:
-                    record = score
-                    self.model.save()
-            print('Game', self.n_games, 'Score', score, ' Record:' , record)
+        #     if score > record:
+        #             self.set_record(score)
+        #             self.model.save()
+        #     print('Game', self.n_games, 'Score', score, ' Record:' , record)
 
             # plot_scores.append(score)
             # total_score += score
