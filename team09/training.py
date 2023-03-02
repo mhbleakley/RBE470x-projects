@@ -21,7 +21,7 @@ net.add(ActivationLayer(sigmoid, sigmoid_prime))
 
 # train
 net.use(loss_func, loss_func_prime)
-net.fit(x_train, y_train, epochs=1000, learning_rate=0.1)
+net.fit(x_train, y_train, epochs=1000, learning_rate=0.75)
 
 # test
 out = net.predict(x_train)

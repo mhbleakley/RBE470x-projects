@@ -5,7 +5,7 @@ class Layer:
         self.output = None
     
     def forward_propagation(self, input):
-        raise NotImplementedError
+        pass
 
     def backward_propagation(self, output_error, learning_rate):
-        raise NotImplementedError
+        pass
