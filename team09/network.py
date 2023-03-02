@@ -1,3 +1,5 @@
+from losses import loss_func, loss_func_prime
+
 class Network:
     
     def __init__(self):
@@ -45,10 +47,10 @@ class Network:
                     output = layer.forward_propagation(output)
 
                 # compute loss (for display purpose only)
-                err += self.loss(y_train[j], output)
+                err += loss_func(y_train[j], output)
 
                 # backward propagation
-                error = self.loss_prime(y_train[j], output)
+                error = loss_func_prime(y_train[j], output)
                 for layer in reversed(self.layers):
                     error = layer.backward_propagation(error, learning_rate)
 
