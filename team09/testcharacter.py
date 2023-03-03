@@ -420,7 +420,7 @@ class TestCharacter(CharacterEntity):
         #     reward += 4
 
         new_distance = len(self.makePath_reward(wrld, self.astar_reward(wrld, dx, dy), dx, dy))
-        print("NEEEEEWW:   " + str(new_distance))
+        # print("NEEEEEWW:   " + str(new_distance))
         if new_distance >= len(self.path):
             reward -= 500/(1+new_distance)
         elif new_distance < len(self.path):
@@ -431,8 +431,8 @@ class TestCharacter(CharacterEntity):
         if dx == 0 and dy == 0:
             reward -= 100
 
-        if dy > 0 or dx > 0:
-            reward += 10
+        # if dy > 0 or dx > 0:
+        #     reward += 10
 
         # if hit_wall == True:
         #     reward += 20
