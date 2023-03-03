@@ -23,6 +23,12 @@ with open("../games.csv", 'w') as csvfile:
     updater.writerow([0])
     csvfile.close()
 
+with open("../record.csv", 'w') as csvfile:
+    updater = csv.writer(csvfile)
+    updater.writerow([-5000])
+    csvfile.close()
+
+
 model = Linear_QNet(13,256,13)
 model.load_state_dict(torch.load('../project1/model/model.pth'), strict=False)
 

@@ -44,7 +44,7 @@ class TestCharacter(CharacterEntity):
     # moves to iteration through the list of paths 
     moves = 0
     # our depth range for looking for the monster
-    rnge = 3
+    rnge = 2
     # used to determine if the bomb explosion is gone
     bombCycle = 0
     # used to update the placed bomb location
@@ -70,6 +70,26 @@ class TestCharacter(CharacterEntity):
                                 cells.append((current[0] + dx, current[1] + dy))
         # All done
         return cells
+
+    # Just looks for neighbors of 8 as the frontier
+    def look_for_empty_cell_with_explostion(self, wrld, current):
+        # List of empty cells
+        cells = []
+        # Go through neighboring cells
+        for dx in [-1, 0, 1]:
+            # Avoid out-of-bounds access
+            if ((current[0] + dx >= 0) and (current[0] + dx < wrld.width())):
+                for dy in [-1, 0, 1]:
+                    # Avoid out-of-bounds access
+                    if ((current[1] + dy >= 0) and (current[1] + dy < wrld.height())):
+                        # Is this cell safe?
+                        if (wrld.exit_at(current[0] + dx, current[1] + dy) or 
+                            not wrld.wall_at(current[0] + dx, current[1] + dy) or
+                            not wrld.characters_at(current[0] + dx, current[1] + dy)):
+                                cells.append((current[0] + dx, current[1] + dy))
+        # All done
+        return cells
+    
     
     # Just looks for neighbors of 8 as the frontier
     def look_for_empty_cell_states(self, wrld, current):
@@ -399,14 +419,14 @@ class TestCharacter(CharacterEntity):
         # else:
         #     reward += 4
 
-        # new_distance = len(self.makePath_reward(wrld, self.astar_reward(wrld, dx, dy), dx, dy))
-        # print(new_distance)
-        # if new_distance >= len(self.path):
-        #     reward -= 500/(1+new_distance)
-        # elif new_distance < len(self.path):
-        #     reward += 100/(1+new_distance)
-        # else:
-        #     reward += 500/(1+new_distance)
+        new_distance = len(self.makePath_reward(wrld, self.astar_reward(wrld, dx, dy), dx, dy))
+        print("NEEEEEWW:   " + str(new_distance))
+        if new_distance >= len(self.path):
+            reward -= 500/(1+new_distance)
+        elif new_distance < len(self.path):
+            reward += 100/(1+new_distance)
+        else:
+            reward += 500/(1+new_distance)
 
         if dx == 0 and dy == 0:
             reward -= 100
@@ -452,87 +472,95 @@ class TestCharacter(CharacterEntity):
 
 
     def do(self, wrld):
+
+        found, mx, my = self.monster_in_range(wrld)
+        self.path = self.makePath(wrld, self.astar(wrld))
         (next_wrld, events) = SensedWorld.next(wrld) 
-
-        # plot_scores = []
-        # plot_mean_score = []
-        # total_score = 0
         record = self.get_record() 
+        score = self.get_score(next_wrld)
 
-        self.get_games()
+        if not found : 
+            next = self.path[1]  
+            dx = next[0] - self.x
+            dy = next[1] - self.y
+            self.move(dx,dy)
 
-        #get old state 
-        state_old = self.get_state(wrld)
+            done = False
+            for e in events:
+                if e.tpe == Event.CHARACTER_KILLED_BY_MONSTER or e.tpe == Event.CHARACTER_FOUND_EXIT or e.tpe == Event.BOMB_HIT_CHARACTER:
+                    done = True  
+        else : 
 
-        self.old = state_old
-        #get move
-        final_move = self.get_action(state_old)
+            # plot_scores = []
+            # plot_mean_score = []
+            # total_score = 0
 
-        dx, dy, bomb = self.get_move(final_move)
+            self.get_games()
 
-        # print("bomb:", bomb)
-        used_bomb = False
-        if bomb == True:
-            self.bombing()
-            used_bomb = True
-            self.move(dx, dy)
-        else:
-            self.move(dx, dy)
+            #get old state 
+            state_old = self.get_state(wrld)
+
+            self.old = state_old
+            #get move
+            final_move = self.get_action(state_old)
+
+            dx, dy, bomb = self.get_move(final_move)
+
+            # print("bomb:", bomb)
+            used_bomb = False
+            if bomb == True:
+                self.bombing()
+                used_bomb = True
+                self.move(dx, dy)
+            else:
+                self.move(dx, dy)
+            
+            self.moves += 1
+
+            hit_wall = False
+            for e in events:
+                if e.tpe == Event.BOMB_HIT_WALL:
+                    hit_wall = True
+
+            hit_monster = False
+            for e in events:
+                if e.tpe == Event.BOMB_HIT_MONSTER:
+                    hit_monster = True
+
+            hit_me = False
+            for e in events:
+                if e.tpe == Event.BOMB_HIT_CHARACTER:
+                    hit_me = True
+            
+            reaches_exit = False
+            for e in events:
+                if e.tpe == Event.CHARACTER_FOUND_EXIT:
+                    reaches_exit = True
+            
+            monster_kill = False
+            for e in events:
+                if e.tpe == Event.CHARACTER_KILLED_BY_MONSTER:
+                    monster_kill = True
+
+            reward = self.get_reward(wrld, dx, dy, hit_wall, hit_monster, hit_me, reaches_exit, monster_kill, used_bomb)
+            print(reward) 
+
+            done = False
+
+            for e in events:
+                if e.tpe == Event.CHARACTER_KILLED_BY_MONSTER or e.tpe == Event.CHARACTER_FOUND_EXIT or e.tpe == Event.BOMB_HIT_CHARACTER:
+                    done = True  
+
+            state_new = self.get_state(next_wrld)
+
+            #train short memory
+            # self.train_short_memory(state_old, final_move, reward, state_new, done)
+            self.remeber(state_old, final_move, reward, state_new, done)
+            self.train_long_memory()
+            #remember
+
         
-        self.moves += 1
-
-        score = self.get_score(wrld)
-
-        hit_wall = False
-        for e in events:
-            if e.tpe == Event.BOMB_HIT_WALL:
-                hit_wall = True
-
-        hit_monster = False
-        for e in events:
-            if e.tpe == Event.BOMB_HIT_MONSTER:
-                hit_monster = True
-
-        hit_me = False
-        for e in events:
-            if e.tpe == Event.BOMB_HIT_CHARACTER:
-                hit_me = True
-        
-        reaches_exit = False
-        for e in events:
-            if e.tpe == Event.CHARACTER_FOUND_EXIT:
-                reaches_exit = True
-        
-        monster_kill = False
-        for e in events:
-            if e.tpe == Event.CHARACTER_KILLED_BY_MONSTER:
-                monster_kill = True
-
-        
-
-        reward = self.get_reward(wrld, dx, dy, hit_wall, hit_monster, hit_me, reaches_exit, monster_kill, used_bomb)
-        print(reward)
-        done = False
-
-        for e in events:
-            if e.tpe == Event.CHARACTER_KILLED_BY_MONSTER or e.tpe == Event.CHARACTER_FOUND_EXIT or e.tpe == Event.BOMB_HIT_CHARACTER:
-                done = True   
-
-        # found, mx, my = self.monster_in_range(wrld)
-        # if (found and mx == self.x and my == self.y) or (self.x == wrld.exitcell[0] and self.x == wrld.exitcell[1]):
-        #     done = True
-        # else:
-        #     done = False
-
-        state_new = self.get_state(next_wrld)
-
-        #train short memory
-        # self.train_short_memory(state_old, final_move, reward, state_new, done)
-        self.remeber(state_old, final_move, reward, state_new, done)
-        self.train_long_memory()
-        #remember
-        
-        
+    
         if done:
             self.train_long_memory()
 
@@ -543,12 +571,6 @@ class TestCharacter(CharacterEntity):
             print('Game', self.n_games, 'Score', score, ' Record:' , record)
 
 
-        # if self.moves >= 50:
-        #     self.train_long_memory()
-        #     self.model.save()
-        #     self.moves = 0
-        # else:
-        #     self.moves += 1 
         
 
         # if done:
@@ -689,7 +711,7 @@ class TestCharacter(CharacterEntity):
             goal = wrld.exitcell
             if current == goal:
                 break
-            for next in self.look_for_empty_cell_bomb(wrld, current):
+            for next in self.look_for_empty_cell_with_explostion(wrld, current):
                 new_cost = cost_so_far[current] + self.cost(wrld, current, next)
                 if next not in cost_so_far or new_cost < cost_so_far[next]:
                     cost_so_far[next] = new_cost
