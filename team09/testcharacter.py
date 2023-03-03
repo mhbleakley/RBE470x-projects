@@ -52,6 +52,8 @@ class TestCharacter(CharacterEntity):
     # used to determine if the bomb has been dropped
     bomb_start = False
 
+    weights = []
+
     # Just looks for neighbors of 8 as the frontier
     def look_for_empty_cell(self, wrld, current):
         # List of empty cells
@@ -470,8 +472,189 @@ class TestCharacter(CharacterEntity):
     def train_short_memory(self, state, action, reward, next_state, done):
         self.trainer.train_step(state, action, reward, next_state, done)
 
+    
+
+
+
+
+
+
+
+    def get_weights(self):
+        new_weights = []
+
+        with open("../weights.csv",'r') as f:
+            data = csv.DictReader(f) 
+            for row in data:
+                new_weights.append(row['values'])
+
+        self.weights = new_weights
+    
+    def set_weights(self, calculated):
+        with open('../weights.csv', 'w', newline='') as csvfile:
+            fieldnames = ['weight_name', 'values']
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+
+            writer.writeheader()
+            writer.writerow({'weight_name': 'distance_to_goal', 'values': '1'})
+            writer.writerow({'weight_name': 'distance_to_monster', 'values': '2'})
+            writer.writerow({'weight_name': 'Wonderful', 'values': '3'})
+
+    def safe_to_bomb(self):
+        if():
+        return 
+
+    
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    def get_all_monsters(self, wrld):
+        monsters_positions = []
+        for x in range(wrld.width):
+            for y in range(wrld.length):
+                if wrld.monsters_at(x,y):
+                    monsters_positions.append((x,y))
+
+        if monsters_positions != None and len(monsters_positions) > 1:
+            monsters_positions = self.order_to_closest_monster(monsters_positions)
+
+        return monsters_positions
+        
+    def order_to_closest_monster(self, monsters_positions):
+        monster1distance = self.heuristic((self.x, self.y), monsters_positions[0])
+        monster2distance = self.heuristic((self.x, self.y), monsters_positions[1])
+
+        if monster2distance < monster1distance:
+            monsters_positions.reverse()
+            return monsters_positions
+        else:
+            return monsters_positions
+               
+
+    def bomb_droping(self):
+        if self.bomb_location != None:
+            if (self.x == self.bomb_location[0] and  self.y == self.bomb_location[1]) or self.bomb_blast(self.x, self.y):
+                return 1
+        return 0      
+    
+
+
+
+
+
+
+
+    def get_state_Q(self, wrld):
+        state = []
+        monsters = self.get_all_monsters(wrld)
+        
+        #Distance to monster normalized
+        if monsters != None:
+            monsters_distance = self.heuristic((self.x, self.y), monsters[0])
+            state.append(1/(1+monsters_distance))
+        else:
+            state.append(0)
+
+        #Distance to exit normalized
+        self.path = self.makePath(wrld, self.astar(wrld))
+        state.append(1/(1 + len(self.path)))
+
+        #Is bomb bad 1-bad 0-safe
+        if(self.bomb_start == True):
+            state.append(self.bomb_droping())
+        else:
+            state.append(0)
+
+        #Distance to bomb
+        if(self.bomb_start == True):
+            state.append(1/(1 + self.heuristic((self.x, self.y), self.bomb_location)))
+        else:
+            state.append(0)
+
+        #Bomb available
+        if(self.bomb_start == False):
+            state.append(1)
+        else:
+            state.append(0)
+
+        #Euclidean distance away from monster
+        if()
+
+
+
+
+
+
+        
+
+        state = []
+        found, mx, my = self.monster_in_range(wrld)
+        if not found: 
+            state.append(0)
+        else:
+            distance_monster = self.heuristic((mx, my),(self.x, self.y))
+            state.append(1/(1+distance_monster))
+        
+        state.extend(self.look_for_empty_cell_states(wrld,(self.x, self.y)))
+
+        self.path = self.makePath(wrld, self.astar(wrld))
+        state.append(1/(1 + len(self.path)))
+
+        bomb = 0
+        for dx in range(-4,4):
+            if wrld.bomb_at(self.x + dx, self.y) or wrld.bomb_at(self.x, self.y +dx):
+                bomb = 1
+        state.append(bomb)
+
+        if len(wrld.bombs) == 0 and len(wrld.explosions) == 0:
+            state.append(1)
+        else:
+            state.append(0)
+
+        return state 
+
 
     def do(self, wrld):
+
+        self.set_weights()
+        self.get_weights()
+
+        if self.bombCycle == 3 and self.bomb_start:
+            self.bombCycle = 0
+            self.bomb_start = False
+            self.bomb_location = None
+
+        if self.bomb_start == True:
+                self.bombCycle += 1
+
 
         found, mx, my = self.monster_in_range(wrld)
         self.path = self.makePath(wrld, self.astar(wrld))
@@ -806,6 +989,7 @@ class TestCharacter(CharacterEntity):
     def bombing(self):
         if self.bombCycle <= 0:
             self.place_bomb()
+            self.bomb_start = True
         return self.x , self.y
 
     # returns true is the the cell is in the exploding bomb distance and false if not 

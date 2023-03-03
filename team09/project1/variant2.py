@@ -48,7 +48,7 @@ for i in range(5000):
     ))
 
     # Run!
-    g.go(1)
+    g.go()
 
     with open("../games.csv", 'w') as csvfile:
         updater = csv.writer(csvfile)
