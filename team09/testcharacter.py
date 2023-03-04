@@ -663,7 +663,7 @@ class TestCharacter(CharacterEntity):
         for i in range(len(self.weights)):
             self.weights[i] = self.weights[i] + self.alpha*delta*states[i]
 
-        self.set_weights()
+        # self.set_weights()
         
         # print(self.get_state_Q(wrld, move_decided[0], move_decided[1]))
 
