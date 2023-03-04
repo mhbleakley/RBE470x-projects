@@ -48,11 +48,11 @@ for i in range(100):
                                 "S",      # avatar
                                 3, 5,     # position
     ))
-    g.add_monster(SelfPreservingMonster("aggressive", # name
-                                        "A",          # avatar
-                                        3, 13,        # position
-                                        1             # detection range
-    ))
+    # g.add_monster(SelfPreservingMonster("aggressive", # name
+    #                                     "A",          # avatar
+    #                                     3, 13,        # position
+    #                                     1             # detection range
+    # ))
 
     # TODO Add your character
     g.add_character(TestCharacter("me", # name

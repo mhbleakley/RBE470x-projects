@@ -28,11 +28,11 @@ LR = 0.001
 
 
 class TestCharacter(CharacterEntity):
-    def __init__(self, name, avatar, x, y, model):
+    def __init__(self, name, avatar, x, y):
         CharacterEntity.__init__(self, name, avatar, x, y)
-        self.model = model
+        # self.model = model
         gamma = 0.95 #discount rate
-        self.trainer = QTrainer(self.model, lr = LR, gamma = gamma)
+        # self.trainer = QTrainer(self.model, lr = LR, gamma = gamma)
         self.epsilon = 1 # randomness
     n_games = 0
     
@@ -281,21 +281,21 @@ class TestCharacter(CharacterEntity):
 
         return state 
 
-    def get_action(self, state):
-        # random moves: tradeoff exploration / exploitation
-        self.epsilon -= 0.003 * self.n_games
-        if self.epsilon < .01:
-            self.epsilon = .01
-        final_move = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-        if random.random() < self.epsilon:
-            move = random.randint(0, 12)
-            final_move[move] = 1
-        else :
-            state0 = torch.tensor(state, dtype=torch.float)
-            prediction = self.model(state0)
-            move = torch.argmax(prediction).item()
-            # print(move)
-            final_move[int(move)] = 1
+    # def get_action(self, state):
+    #     # random moves: tradeoff exploration / exploitation
+    #     self.epsilon -= 0.003 * self.n_games
+    #     if self.epsilon < .01:
+    #         self.epsilon = .01
+    #     final_move = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    #     if random.random() < self.epsilon:
+    #         move = random.randint(0, 12)
+    #         final_move[move] = 1
+    #     else :
+    #         state0 = torch.tensor(state, dtype=torch.float)
+    #         # prediction = self.model(state0)
+    #         # move = torch.argmax(prediction).item()
+    #         # print(move)
+    #         final_move[int(move)] = 1
         # self.epsilon =  self.epsilon*0.95
         # final_move = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         # if random.randint(0, 1) < self.epsilon:
