@@ -44,7 +44,7 @@ class TestCharacter(CharacterEntity):
     # moves to iteration through the list of paths 
     moves = 0
     # our depth range for looking for the monster
-    rnge = 2
+    rnge = 3
     # used to determine if the bomb explosion is gone
     bombCycle = 0
     # used to update the placed bomb location
@@ -52,7 +52,11 @@ class TestCharacter(CharacterEntity):
     # used to determine if the bomb has been dropped
     bomb_start = False
 
-    weights = []
+    weights = [0, 0, 0, 0, 0, 0]
+
+    discount = 0.95
+
+    alpha = 0.01
 
     # Just looks for neighbors of 8 as the frontier
     def look_for_empty_cell(self, wrld, current):
@@ -290,7 +294,7 @@ class TestCharacter(CharacterEntity):
             state0 = torch.tensor(state, dtype=torch.float)
             prediction = self.model(state0)
             move = torch.argmax(prediction).item()
-            print(move)
+            # print(move)
             final_move[int(move)] = 1
         # self.epsilon =  self.epsilon*0.95
         # final_move = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -486,24 +490,22 @@ class TestCharacter(CharacterEntity):
         with open("../weights.csv",'r') as f:
             data = csv.DictReader(f) 
             for row in data:
-                new_weights.append(row['values'])
+                new_weights.append(float(row['values']))
 
         self.weights = new_weights
-    
-    def set_weights(self, calculated):
+
+    def set_weights(self):
         with open('../weights.csv', 'w', newline='') as csvfile:
             fieldnames = ['weight_name', 'values']
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 
             writer.writeheader()
-            writer.writerow({'weight_name': 'distance_to_goal', 'values': '1'})
-            writer.writerow({'weight_name': 'distance_to_monster', 'values': '2'})
-            writer.writerow({'weight_name': 'Wonderful', 'values': '3'})
-
-    def safe_to_bomb(self):
-        if():
-        return 
-
+            writer.writerow({'weight_name': 'distance_to_monster', 'values': self.weights[0]})
+            writer.writerow({'weight_name': 'astar_to_goal', 'values': self.weights[1]})
+            writer.writerow({'weight_name': 'bomd_safe', 'values': self.weights[2]})
+            writer.writerow({'weight_name': 'distance_to_bomb', 'values': self.weights[3]})
+            writer.writerow({'weight_name': 'bomb_available', 'values': self.weights[4]})
+            writer.writerow({'weight_name': 'man_to_goal', 'values': self.weights[5]})
     
     
 
@@ -534,68 +536,90 @@ class TestCharacter(CharacterEntity):
 
 
 
+    #***************
+    # GETTTING STATE FUNCTIONS
 
-
-    def get_all_monsters(self, wrld):
+    def get_all_monsters(self, wrld, x, y):
         monsters_positions = []
-        for x in range(wrld.width):
-            for y in range(wrld.length):
-                if wrld.monsters_at(x,y):
-                    monsters_positions.append((x,y))
+        for i in range(0, wrld.width()):
+            for j in range(0, wrld.height()):
+                if wrld.monsters_at(i,j):
+                    monsters_positions.append((i,j))
+
+        # print(monsters_positions)
+        # print(x,y)
 
         if monsters_positions != None and len(monsters_positions) > 1:
-            monsters_positions = self.order_to_closest_monster(monsters_positions)
-
-        return monsters_positions
+            close_monsters = []
+            closest = 1000
+            for monster in monsters_positions:
+                # print(self.heuristic((x, y), monster))
+                if self.heuristic((x, y), monster) < closest:
+                    closest = self.heuristic((x, y), monster)
+                    close_monsters.insert(0, monster)
+                else:
+                    close_monsters.append(monster)
+            # print(close_monsters)
+            return close_monsters
+            # new_monsters_positions = self.order_to_closest_monster(monsters_positions, x, y)
+            # print(new_monsters_positions)
+            # return new_monsters_positions
+        else:
+            return monsters_positions
         
-    def order_to_closest_monster(self, monsters_positions):
-        monster1distance = self.heuristic((self.x, self.y), monsters_positions[0])
-        monster2distance = self.heuristic((self.x, self.y), monsters_positions[1])
+    def order_to_closest_monster(self, monsters_positions, x, y):
+        monster1distance = self.heuristic((x, y), monsters_positions[0])
+        monster2distance = self.heuristic((x, y), monsters_positions[1])
+
+        # print("*****")
+        # print(monster1distance)
+        # print(monster2distance)
+        # print("*****")
 
         if monster2distance < monster1distance:
-            monsters_positions.reverse()
+            temp = monsters_positions
+            monsters_positions[0] = temp[1]
+            monsters_positions[1] = temp[0]
             return monsters_positions
         else:
             return monsters_positions
                
 
-    def bomb_droping(self):
+    def bomb_dropping(self, x, y):
         if self.bomb_location != None:
-            if (self.x == self.bomb_location[0] and  self.y == self.bomb_location[1]) or self.bomb_blast(self.x, self.y):
-                return 1
-        return 0      
+            if (x == self.bomb_location[0] and  y == self.bomb_location[1]) or self.bomb_blast(x, y):
+                return 0
+        return 1   
     
-
-
-
-
-
-
-
-    def get_state_Q(self, wrld):
+    def get_state_Q(self, wrld, x, y):
         state = []
-        monsters = self.get_all_monsters(wrld)
+        monsters = self.get_all_monsters(wrld, x, y)
         
-        #Distance to monster normalized
+        #Distance to monster normalized Euclidean
         if monsters != None:
-            monsters_distance = self.heuristic((self.x, self.y), monsters[0])
+            monsters_distance = self.euclidean_distance((x, y), monsters[0])
+            # print(monsters[0])
+            # print((x,y))
             state.append(1/(1+monsters_distance))
         else:
             state.append(0)
 
         #Distance to exit normalized
-        self.path = self.makePath(wrld, self.astar(wrld))
+        self.path = self.makePath_Q(wrld, self.astar_q(wrld, x, y), x, y)
         state.append(1/(1 + len(self.path)))
 
-        #Is bomb bad 1-bad 0-safe
+        #Is bomb bad 0-bad 1-safe
         if(self.bomb_start == True):
-            state.append(self.bomb_droping())
+            state.append(self.bomb_dropping(x, y))
         else:
-            state.append(0)
+            state.append(1)
 
         #Distance to bomb
         if(self.bomb_start == True):
-            state.append(1/(1 + self.heuristic((self.x, self.y), self.bomb_location)))
+            # print(self.bomb_location)
+            # print(x)
+            # print(y)
+            state.append(1/(1 + self.euclidean_distance((x, y), self.bomb_location)))
         else:
             state.append(0)
 
@@ -605,153 +629,306 @@ class TestCharacter(CharacterEntity):
         else:
             state.append(0)
 
-        #Euclidean distance away from monster
-        if()
+        #Manhattan to Exit
+        state.append(1/(1+self.heuristic((x, y), wrld.exitcell)))
+
+        return state
+    
 
 
 
+    #*****************
+    # GET THE Q VALUE
+    def get_Q_value(self, states):
+        q = 0
+        for i in range(0, len(states) - 1):
+            q = q + self.weights[i]*states[i]
+        
+        return q
+    
 
+
+    
+
+    #***************
+    #Update Weights
+
+    def update_weights(self, wrld, q, states):
+        max_Q, move_decided = self.get_max_q(wrld)
+
+        reward = self.get_reward_q(wrld, move_decided)
+
+        delta = reward + self.discount*max_Q - q
+
+        for i in range(len(self.weights)):
+            self.weights[i] = self.weights[i] + self.alpha*delta*states[i]
+
+        self.set_weights()
+        
+        # print(self.get_state_Q(wrld, move_decided[0], move_decided[1]))
+
+        return (move_decided[0] - self.x), (move_decided[1] - self.y)
+
+
+    def get_max_q(self, wrld):
+        neighbors = self.look_for_empty_cell_q(wrld, (self.x, self.y))
+        best_q  =  -99999999
+
+        move_decided = (self.x, self.y)
+        # print(neighbors)
+
+        for i in neighbors:
+            next_state = self.get_state_Q(wrld, i[0], i[1])
+            next_q = self.get_Q_value(next_state)
+
+            if next_q > best_q:
+                best_q = next_q
+                move_decided = i
+        
+        return best_q, move_decided
+
+
+    def get_reward_q(self, wrld, move_decided):
+        (next_wrld, events) = SensedWorld.next(wrld) 
+
+        for e in events:
+            if e.tpe == Event.BOMB_HIT_MONSTER:
+                return 100
+
+        for e in events:
+            if e.tpe == Event.BOMB_HIT_CHARACTER:
+                return -1000
+            
+        for e in events:
+            if e.tpe == Event.CHARACTER_FOUND_EXIT:
+                return 750
+        
+        for e in events:
+            if e.tpe == Event.CHARACTER_KILLED_BY_MONSTER:
+                return -750
+
+
+
+        # if move_decided == wrld.exitcell:
+        #     return 750
+        
+        # if self.bomb_location != None and self.bomb_blast(move_decided[0], move_decided[1]):
+        #     return -1000
+        
+        # monsters = self.get_all_monsters(wrld, move_decided[0], move_decided[1])
+        # if monsters != None:
+        #     if move_decided == monsters[0]:
+        #         return -750
+        
+        
+        return -10
 
 
         
 
-        state = []
-        found, mx, my = self.monster_in_range(wrld)
-        if not found: 
-            state.append(0)
-        else:
-            distance_monster = self.heuristic((mx, my),(self.x, self.y))
-            state.append(1/(1+distance_monster))
+    # Just looks for neighbors of 8 as the frontier
+    def look_for_empty_cell_q(self, wrld, current):
+        # List of empty cells
+        cells = []
+        # Go through neighboring cells
+        for dx in [-1, 0, 1]:
+            # Avoid out-of-bounds access
+            if ((current[0] + dx >= 0) and (current[0] + dx < wrld.width())):
+                for dy in [-1, 0, 1]:
+                    # Avoid out-of-bounds access
+                    if ((current[1] + dy >= 0) and (current[1] + dy < wrld.height())):
+                        # Is this cell safe?
+                        if not (wrld.wall_at(current[0] + dx, current[1] + dy) or
+                                wrld.bomb_at(current[0] + dx, current[1] + dy) or
+                                wrld.explosion_at(current[0] + dx, current[1] + dy) or
+                                wrld.monsters_at(current[0] + dx, current[1] + dy)):
+                                cells.append((current[0] + dx, current[1] + dy))
+        # All done
+        return cells
+
+    # Normal A* star using lecture pseduo code 
+    def astar_q(self, wrld,x ,y):
+        # initializes A* variables
+        frontier = PriorityQueue()
+        came_from = {}
+        cost_so_far = {}
+
+        frontier.put((x, y), 0)
+        came_from[(x, y)] = None
+        cost_so_far[(x, y)] = 0
         
-        state.extend(self.look_for_empty_cell_states(wrld,(self.x, self.y)))
+        # continues if there is a frontier
+        while not frontier.empty():
+            current = frontier.get()
+            goal = wrld.exitcell
+            if current == goal:
+                break
+            for next in self.look_for_empty_cell_bomb(wrld, current):
+                new_cost = cost_so_far[current] + self.cost(wrld, current, next)
+                if next not in cost_so_far or new_cost < cost_so_far[next]:
+                    cost_so_far[next] = new_cost
+                    priority = new_cost + self.heuristic(goal, next)
+                    frontier.put(next, priority)
+                    came_from[next] = current
+        return came_from
 
-        self.path = self.makePath(wrld, self.astar(wrld))
-        state.append(1/(1 + len(self.path)))
-
-        bomb = 0
-        for dx in range(-4,4):
-            if wrld.bomb_at(self.x + dx, self.y) or wrld.bomb_at(self.x, self.y +dx):
-                bomb = 1
-        state.append(bomb)
-
-        if len(wrld.bombs) == 0 and len(wrld.explosions) == 0:
-            state.append(1)
+    def makePath_Q(self, wrld, came_from, x, y):
+        current = wrld.exitcell
+        path = []
+        # if the target cell is in dictionary do
+        if current in came_from:              
+            while current != (x, y):
+                path.append(current)
+                current = came_from[current]
+            path.append((x, y))
+            path.reverse()
+            return path
         else:
-            state.append(0)
+            # stay still
+            path.append((x, y))
+            path.append((x, y))
+            return path
 
-        return state 
+
 
 
     def do(self, wrld):
-
-        self.set_weights()
-        self.get_weights()
-
-        if self.bombCycle == 3 and self.bomb_start:
-            self.bombCycle = 0
-            self.bomb_start = False
-            self.bomb_location = None
-
-        if self.bomb_start == True:
-                self.bombCycle += 1
-
-
         found, mx, my = self.monster_in_range(wrld)
         self.path = self.makePath(wrld, self.astar(wrld))
-        (next_wrld, events) = SensedWorld.next(wrld) 
-        record = self.get_record() 
-        score = self.get_score(next_wrld)
 
-        if not found : 
+        if found:
+            self.get_weights()
+            
+
+            if(wrld.scores['me'] == -4999):
+                self.get_weights()
+            
+            state = self.get_state_Q(wrld, self.x, self.y)
+            # print(state)
+
+            q = self.get_Q_value(state)
+
+            move_decided = self.update_weights(wrld, q, state)
+
+            # print(move_decided)
+
+            if move_decided[0] == self.x and move_decided[1] == self.y:
+                self.bomb_location = self.bombing()
+            else:
+                self.move(move_decided[0], move_decided[1])
+                
+
+            if self.bombCycle == 3 and self.bomb_start:
+                self.bombCycle = 0
+                self.bomb_start = False
+                self.bomb_location = None
+
+            if self.bomb_start == True:
+                    self.bombCycle += 1
+        else:
             next = self.path[1]  
             dx = next[0] - self.x
             dy = next[1] - self.y
             self.move(dx,dy)
 
-            done = False
-            for e in events:
-                if e.tpe == Event.CHARACTER_KILLED_BY_MONSTER or e.tpe == Event.CHARACTER_FOUND_EXIT or e.tpe == Event.BOMB_HIT_CHARACTER:
-                    done = True  
-        else : 
 
-            # plot_scores = []
-            # plot_mean_score = []
-            # total_score = 0
 
-            self.get_games()
+        # found, mx, my = self.monster_in_range(wrld)
+        # self.path = self.makePath(wrld, self.astar(wrld))
+        # (next_wrld, events) = SensedWorld.next(wrld) 
+        # record = self.get_record() 
+        # score = self.get_score(next_wrld)
 
-            #get old state 
-            state_old = self.get_state(wrld)
+        # if not found : 
+        #     next = self.path[1]  
+        #     dx = next[0] - self.x
+        #     dy = next[1] - self.y
+        #     self.move(dx,dy)
 
-            self.old = state_old
-            #get move
-            final_move = self.get_action(state_old)
+        #     done = False
+        #     for e in events:
+        #         if e.tpe == Event.CHARACTER_KILLED_BY_MONSTER or e.tpe == Event.CHARACTER_FOUND_EXIT or e.tpe == Event.BOMB_HIT_CHARACTER:
+        #             done = True  
+        # else : 
 
-            dx, dy, bomb = self.get_move(final_move)
+        #     # plot_scores = []
+        #     # plot_mean_score = []
+        #     # total_score = 0
 
-            # print("bomb:", bomb)
-            used_bomb = False
-            if bomb == True:
-                self.bombing()
-                used_bomb = True
-                self.move(dx, dy)
-            else:
-                self.move(dx, dy)
+        #     self.get_games()
+
+        #     #get old state 
+        #     state_old = self.get_state(wrld)
+
+        #     self.old = state_old
+        #     #get move
+        #     final_move = self.get_action(state_old)
+
+        #     dx, dy, bomb = self.get_move(final_move)
+
+        #     # print("bomb:", bomb)
+        #     used_bomb = False
+        #     if bomb == True:
+        #         self.bombing()
+        #         used_bomb = True
+        #         self.move(dx, dy)
+        #     else:
+        #         self.move(dx, dy)
             
-            self.moves += 1
+        #     self.moves += 1
 
-            hit_wall = False
-            for e in events:
-                if e.tpe == Event.BOMB_HIT_WALL:
-                    hit_wall = True
+        #     hit_wall = False
+        #     for e in events:
+        #         if e.tpe == Event.BOMB_HIT_WALL:
+        #             hit_wall = True
 
-            hit_monster = False
-            for e in events:
-                if e.tpe == Event.BOMB_HIT_MONSTER:
-                    hit_monster = True
+        #     hit_monster = False
+        #     for e in events:
+        #         if e.tpe == Event.BOMB_HIT_MONSTER:
+        #             hit_monster = True
 
-            hit_me = False
-            for e in events:
-                if e.tpe == Event.BOMB_HIT_CHARACTER:
-                    hit_me = True
+        #     hit_me = False
+        #     for e in events:
+        #         if e.tpe == Event.BOMB_HIT_CHARACTER:
+        #             hit_me = True
             
-            reaches_exit = False
-            for e in events:
-                if e.tpe == Event.CHARACTER_FOUND_EXIT:
-                    reaches_exit = True
+        #     reaches_exit = False
+        #     for e in events:
+        #         if e.tpe == Event.CHARACTER_FOUND_EXIT:
+        #             reaches_exit = True
             
-            monster_kill = False
-            for e in events:
-                if e.tpe == Event.CHARACTER_KILLED_BY_MONSTER:
-                    monster_kill = True
+        #     monster_kill = False
+        #     for e in events:
+        #         if e.tpe == Event.CHARACTER_KILLED_BY_MONSTER:
+        #             monster_kill = True
 
-            reward = self.get_reward(wrld, dx, dy, hit_wall, hit_monster, hit_me, reaches_exit, monster_kill, used_bomb)
-            print(reward) 
+        #     reward = self.get_reward(wrld, dx, dy, hit_wall, hit_monster, hit_me, reaches_exit, monster_kill, used_bomb)
+        #     print(reward) 
 
-            done = False
+        #     done = False
 
-            for e in events:
-                if e.tpe == Event.CHARACTER_KILLED_BY_MONSTER or e.tpe == Event.CHARACTER_FOUND_EXIT or e.tpe == Event.BOMB_HIT_CHARACTER:
-                    done = True  
+        #     for e in events:
+        #         if e.tpe == Event.CHARACTER_KILLED_BY_MONSTER or e.tpe == Event.CHARACTER_FOUND_EXIT or e.tpe == Event.BOMB_HIT_CHARACTER:
+        #             done = True  
 
-            state_new = self.get_state(next_wrld)
+        #     state_new = self.get_state(next_wrld)
 
-            #train short memory
-            # self.train_short_memory(state_old, final_move, reward, state_new, done)
-            self.remeber(state_old, final_move, reward, state_new, done)
-            self.train_long_memory()
-            #remember
+        #     #train short memory
+        #     # self.train_short_memory(state_old, final_move, reward, state_new, done)
+        #     self.remeber(state_old, final_move, reward, state_new, done)
+        #     self.train_long_memory()
+        #     #remember
 
         
     
-        if done:
-            self.train_long_memory()
+        # if done:
+        #     self.train_long_memory()
 
-            if score > record:
-                    self.set_record(score)
-                    self.model.save()
+        #     if score > record:
+        #             self.set_record(score)
+        #             self.model.save()
                     
-            print('Game', self.n_games, 'Score', score, ' Record:' , record)
+        #     print('Game', self.n_games, 'Score', score, ' Record:' , record)
 
 
         
